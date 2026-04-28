@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'cwcf_data';
+export const STORAGE_KEY = 'cwcf_data';
 const CURRENT_SCHEMA_VERSION = 1;
 const APP_VERSION = '0.1.0';
 
@@ -342,11 +342,13 @@ export async function getFoldersForItem(itemRef) {
   return folderIds.map(id => map.get(id)).filter(Boolean);
 }
 
+// Returns [] if the folder doesn't exist. Mirrors getFoldersForItem's
+// graceful-on-missing behavior so callers can treat both query functions the same.
 export async function getItemsInFolder(folderId) {
-  const state = await readRaw();
-  if (!state.folders.some(f => f.id === folderId)) {
-    throw new Error(`Folder not found: ${folderId}`);
+  if (typeof folderId !== 'string') {
+    throw new Error(`folderId must be a string, got ${typeof folderId}`);
   }
+  const state = await readRaw();
   return Object.entries(state.assignments)
     .filter(([_, ids]) => ids.includes(folderId))
     .map(([ref]) => ref);
@@ -549,11 +551,4 @@ function sanitizeImportedTitles(titles) {
 
 export async function getBytesInUse() {
   return chrome.storage.local.getBytesInUse(STORAGE_KEY);
-}
-
-// Test page only. Restores to fully-empty default state.
-export async function _wipeAll() {
-  return enqueueWrite(async () => {
-    await chrome.storage.local.remove(STORAGE_KEY);
-  });
 }
