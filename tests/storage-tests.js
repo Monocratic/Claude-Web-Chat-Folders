@@ -1,5 +1,9 @@
 import * as S from '../src/lib/storage.js';
 
+async function wipeStorage() {
+  await chrome.storage.local.remove(S.STORAGE_KEY);
+}
+
 const VALID_UUID_A = '11111111-2222-3333-4444-555555555555';
 const VALID_UUID_B = '66666666-7777-8888-9999-aaaaaaaaaaaa';
 const VALID_UUID_C = 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff';
@@ -192,7 +196,8 @@ const tests = [
     const parsed = S.parseItemRef(ref);
     assertEqual(parsed, { type: 'chat', uuid: VALID_UUID_A }, 'parsed back to parts');
     assertEqual(S.parseItemRef('garbage'), null, 'bad ref returns null');
-    assertTrue(() => { try { S.formatItemRef('blog', VALID_UUID_A); return false; } catch { return true; } }, 'bad type throws');
+    await assertThrows(() => S.formatItemRef('blog', VALID_UUID_A), 'Invalid item type', 'bad type throws');
+    await assertThrows(() => S.formatItemRef('chat', 'not-a-uuid'), 'Invalid UUID', 'bad uuid throws');
   }],
 
   ['assignItemToFolder + getFoldersForItem + getItemsInFolder', async () => {
@@ -209,6 +214,15 @@ const tests = [
     assertEqual(itemsInB, [REF_CHAT_A], 'folder B has only chat');
     await assertThrows(() => S.assignItemToFolder(REF_CHAT_A, 'f_bogus'), 'not found', 'bad folder throws');
     await assertThrows(() => S.assignItemToFolder('garbage', a.id), 'Invalid item ref', 'bad ref throws');
+  }],
+
+  ['query functions are graceful on missing identifiers', async () => {
+    const itemsInMissing = await S.getItemsInFolder('f_does_not_exist');
+    assertEqual(itemsInMissing, [], 'missing folder returns []');
+    const foldersForUnassigned = await S.getFoldersForItem(REF_CHAT_A);
+    assertEqual(foldersForUnassigned, [], 'unassigned item returns []');
+    await assertThrows(() => S.getItemsInFolder(123), 'must be a string', 'bad folderId type throws');
+    await assertThrows(() => S.getFoldersForItem('garbage'), 'Invalid item ref', 'bad item ref format throws');
   }],
 
   ['assign is idempotent', async () => {
@@ -413,7 +427,7 @@ async function runAll() {
   let failed = 0;
   const lines = [];
   for (const [name, fn] of tests) {
-    await S._wipeAll();
+    await wipeStorage();
     try {
       await fn();
       lines.push(`PASS  ${name}`);
@@ -452,13 +466,13 @@ document.getElementById('btn-backup').addEventListener('click', async () => {
 document.getElementById('btn-run').addEventListener('click', async () => {
   await backupCurrentState('cwcf-pretest-backup');
   if (!confirm('Backup downloaded to your Downloads folder. Wipe storage and run tests now?')) return;
-  await S._wipeAll();
+  await wipeStorage();
   await runAll();
 });
 
 document.getElementById('btn-wipe').addEventListener('click', async () => {
   if (!confirm('Wipe all CWCF storage? This is irreversible (without a backup).')) return;
-  await S._wipeAll();
+  await wipeStorage();
   await refreshStats();
   document.getElementById('output').textContent = 'Storage wiped.';
 });
