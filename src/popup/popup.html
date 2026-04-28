@@ -61,6 +61,9 @@
         <button class="icon-btn" id="btn-folder-edit" type="button" aria-label="Edit folder" title="Edit">
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
         </button>
+        <button class="icon-btn icon-btn--danger" id="btn-folder-delete" type="button" aria-label="Delete folder" title="Delete">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 4h10M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M4 4l1 9a1 1 0 001 1h4a1 1 0 001-1l1-9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </header>
       <p class="detail-description" id="detail-description" hidden></p>
       <ul class="item-list" id="detail-items" role="list"></ul>
@@ -204,10 +207,7 @@
     <dialog class="modal modal--confirm" id="modal-confirm" aria-labelledby="confirm-title">
       <h3 id="confirm-title">Confirm</h3>
       <p id="confirm-message"></p>
-      <div class="modal__actions">
-        <button type="button" class="secondary-btn" id="btn-confirm-cancel">Cancel</button>
-        <button type="button" class="danger-btn" id="btn-confirm-ok">Confirm</button>
-      </div>
+      <div class="modal__actions"></div>
     </dialog>
 
     <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>

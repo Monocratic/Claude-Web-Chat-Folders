@@ -54,6 +54,11 @@ body {
   min-height: 420px;
   max-height: 600px;
   overflow: hidden;
+  visibility: hidden;
+}
+
+body.cwcf-ready {
+  visibility: visible;
 }
 
 #app {
@@ -122,6 +127,11 @@ body {
 .icon-btn:focus-visible {
   outline: none;
   border-color: var(--border-focus);
+}
+
+.icon-btn--danger:hover {
+  color: var(--accent-danger);
+  background: var(--bg-tertiary);
 }
 
 .primary-btn {
@@ -701,14 +711,11 @@ dialog.modal--emoji {
 
 /* ----- View switching ----- */
 
-#app[data-view="folders"] #view-folders { display: flex; flex-direction: column; }
-#app[data-view="folders"] #view-folder-detail,
-#app[data-view="folders"] #view-settings { display: none; }
+.view { display: none; }
 
-#app[data-view="folder-detail"] #view-folder-detail { display: flex; flex-direction: column; }
-#app[data-view="folder-detail"] #view-folders,
-#app[data-view="folder-detail"] #view-settings { display: none; }
-
-#app[data-view="settings"] #view-settings { display: flex; flex-direction: column; }
-#app[data-view="settings"] #view-folders,
-#app[data-view="settings"] #view-folder-detail { display: none; }
+#app[data-view="folders"] #view-folders,
+#app[data-view="folder-detail"] #view-folder-detail,
+#app[data-view="settings"] #view-settings {
+  display: flex;
+  flex-direction: column;
+}
