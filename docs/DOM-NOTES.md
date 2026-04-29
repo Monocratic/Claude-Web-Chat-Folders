@@ -1,16 +1,17 @@
 # claude.ai DOM Notes
 
-This file tracks the DOM structure the content script depends on. Update every time a selector changes or a behavior is observed.
+**v0.1 has zero claude.ai DOM dependency at runtime.** The right-click context menu surface filters by URL pattern only (`https://claude.ai/chat/*`); the service worker never reads the rendered page. The notes below capture reconnaissance from earlier v0.1 work that ultimately pivoted away from in-page DOM injection (see `ARCHITECTURE.md` "v0.1 architecture pivot history"). They remain here as a v0.2 reference: if a future version reintroduces an in-page surface (top-of-sidebar pill, inline folder dots, drag-drop targets), this is the starting point.
 
-claude.ai is a React SPA. DOM changes without notice. When the inject button stops appearing or appears in the wrong place, look here first.
+claude.ai is a React SPA. DOM changes without notice. If a v0.2 surface uses anything in this file, expect to update it.
 
 ## Last verified working
 
 - Date: 2026-04-29
 - Browser: Brave (primary dev target alongside Vivaldi)
 - claude.ai version: current (no public version string)
+- v0.1 status: not consumed at runtime. Selectors module retains URL-pattern helpers used by the service worker.
 
-When you update selectors, also update this section with the date and browser used to verify.
+When a v0.2 surface uses these selectors, update this section with the date and browser used to verify.
 
 ## Anchors we depend on
 

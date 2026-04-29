@@ -2,7 +2,15 @@
 
 Folder organization for claude.ai chats. Local storage only, no API access, no telemetry. Chromium-based browsers (Chrome, Vivaldi, Edge, Brave). Firefox not supported.
 
-The extension adds a toolbar popup for managing folders and (in a forthcoming commit) a small inject button on each chat row in claude.ai's sidebar for assigning chats to folders. Data lives in `chrome.storage.local`. JSON export and import is the only data movement, and it is always user-initiated.
+The extension adds a toolbar popup for managing folders, and a "Add chat to folder" item to the browser's right-click menu when you right-click a chat link on claude.ai. Data lives in `chrome.storage.local`. JSON export and import is the only data movement, and it is always user-initiated.
+
+## Usage
+
+**To assign a chat to a folder:** right-click the chat link in claude.ai's sidebar, hover "Add chat to folder", click the folder name. The assignment is immediate and persists locally.
+
+**To create or manage folders:** click the extension icon in your toolbar. The popup lets you create folders, edit names/colors/icons, pin folders, drag-reorder, view chats inside a folder, change settings, and import/export your data.
+
+**No folders yet?** The right-click menu's first item links to the popup so you can set up.
 
 ## Install (unpacked from source)
 

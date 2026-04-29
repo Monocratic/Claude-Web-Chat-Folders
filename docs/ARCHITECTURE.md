@@ -7,8 +7,8 @@ This document captures the design decisions for v0.1 of Claude Web Chat Folders.
 Add folder organization to claude.ai chats. Local storage only. JSON export/import for portability. No backend, no API access, no telemetry.
 
 Two UI surfaces:
-1. Toolbar popup for folder management.
-2. Per-row inject button on claude.ai's sidebar (deferred to a later commit; currently scaffolded only).
+1. Toolbar popup for folder management (folder CRUD, settings, import/export).
+2. Browser right-click context menu on claude.ai chat links for per-chat assignment.
 
 ## Non-goals (v0.1)
 
@@ -178,33 +178,39 @@ popup-settings.js     settings panel, export/import, storage usage
 
 The popup does not depend on claude.ai's DOM. It is fully testable in isolation.
 
-### Inject button
+### Browser context menu
 
-`src/content/`. Per-row UI on claude.ai's sidebar. Click opens a mini-menu for assigning the chat or project to a folder. Visual style governed by `injectButtonStyle` and `injectButtonPosition` settings.
+Per-chat assignment is handled through `chrome.contextMenus`. Right-clicking a chat link on claude.ai shows an "Add chat to folder" submenu with the user's folders (pinned first, then by `sortOrder`), each as a clickable item. A trailing "Manage folders…" item opens the popup. With no folders yet, a single "No folders yet — click to manage" item opens the popup directly.
 
-This surface is deferred. The manifest already declares the `claude.ai/*` host permission and the popup is wired to react to changes from the content script via `chrome.storage.onChanged`.
+The menu is registered and refreshed by `src/background.js`. Menu items are filtered to claude.ai chat links only via `documentUrlPatterns: ["https://claude.ai/*"]` and `targetUrlPatterns: ["https://claude.ai/chat/*"]`.
+
+This surface has zero DOM dependency on claude.ai. Anthropic can redesign the sidebar at any time and the assignment path keeps working because we never touch the rendered page.
+
+### Service worker
+
+`src/background.js`. Minimal scope: register the context menu on `chrome.runtime.onInstalled` and `onStartup`, refresh the menu (debounced 200 ms) when folders change via `chrome.storage.onChanged`, handle `chrome.contextMenus.onClicked` by parsing the chat UUID from `info.linkUrl` and calling the storage API.
+
+The service worker imports `storage.js` and `selectors.js` directly via static ES module imports. MV3 service workers support modules natively when the manifest declares `"type": "module"`, unlike content scripts. The service worker is event-driven; it suspends between events and re-runs the entry script on wake. Top-level `addListener` calls register listeners that survive suspension.
 
 ### What we do not do
 
-We do not replace claude.ai's sidebar. We do not restyle it. We do not fetch chat data from Anthropic's API. We do not modify chat content. The extension reads sidebar URLs and titles from the rendered DOM, nothing else.
+We do not replace claude.ai's sidebar. We do not restyle it. We do not fetch chat data from Anthropic's API. We do not modify chat content. We do not run a content script on claude.ai pages. The only data we read about a chat is the UUID extracted from a URL the user right-clicked.
 
-## SPA resilience pattern
+## v0.1 architecture pivot history
 
-claude.ai is a React app. Components mount, unmount, and re-render constantly. Selectors that worked on page load will not necessarily match after navigation. The pattern in `content.js` (when written):
+An earlier iteration of v0.1 attempted a per-chat-row inject button (a small folder icon appearing on hover at the right edge of each chat anchor) plus an in-page popover. That work landed in commits `ae6d69c` through `e636869`. Live testing on claude.ai surfaced an unsolvable real-estate conflict: claude.ai already renders its own three-dot context menu at the right edge of every chat row, with no usable padding on the left edge either. The inject button overlapped Anthropic's existing UI and lost mouse events to it.
 
-1. `MutationObserver` watches `document.body` with `{ childList: true, subtree: true }`.
-2. Reactions debounced 150 ms to avoid running on every keystroke in the chat input.
-3. Every injection function checks for a sentinel attribute (`data-cwcf-injected="true"`) before adding UI. Idempotent on re-mount.
-4. All claude.ai selectors live in `src/lib/selectors.js`. When the site changes, fix one file.
-5. Selectors prefer structural anchors (`a[href^="/chat/"]`, `a[href^="/project/"]`, stable `data-testid` values) over class names. Class names are Tailwind utilities and change without notice.
+Brief market check: NavVault ships a right-click-context-menu pattern, validating that approach. Easy Folders, AI Chat Organizer, and ChatFoldr ship various sidebar-augmenting patterns with mixed approaches. The market is not converged on any single pattern. We picked context-menu because it was the smallest pivot that solved the actual problem (per-chat assignment) and had the cleanest breakage story (zero claude.ai DOM dependency).
 
-Also: `pageshow` event handler re-runs the initial sweep on bfcache restores. The observer alone does not fire when the document is restored from cache.
-
-See `docs/DOM-NOTES.md` for the live record of which selectors are currently working.
+The content script files (`src/content/content.js`, `main.js`, `content.css`) were removed in the pivot commit. The selectors module (`src/lib/selectors.js`) survives because the URL extraction helpers are still used by the service worker. The popup, storage, theme system, and tests are unchanged.
 
 ## Cross-surface sync
 
-`chrome.storage.onChanged` is the broadcast channel. The popup and the content script both subscribe via `subscribeToChanges(cb)` exported from `storage.js`. Any mutation from any surface fires the callback in all open surfaces, which re-render against the new state.
+`chrome.storage.onChanged` is the broadcast channel. Three subscribers in v0.1:
+
+- The popup subscribes via `subscribeToChanges(cb)` exported from `storage.js`. Any mutation re-renders the popup's open view.
+- The service worker subscribes for the same reason: when folders change, the context menu must rebuild. The rebuild is debounced 200 ms to avoid thrashing on bulk operations.
+- (No content script in v0.1.)
 
 `subscribeToChanges` callback signature: `(newValue, oldValue) => void`. The wrapper filters to the local area and to our `STORAGE_KEY`, hands both values to the callback.
 
@@ -217,18 +223,19 @@ MV3 forbids inline event handlers (`onclick="..."`), inline `<script>` tags, and
 ## Permissions
 
 ```
-permissions:                ["storage"]
-host_permissions:           ["https://claude.ai/*"]
-web_accessible_resources:   src/content/*.js, src/lib/*.js scoped to https://claude.ai/*
+permissions:       ["storage", "contextMenus"]
+host_permissions:  ["https://claude.ai/*"]
 ```
 
 Justification:
 
 - `storage`: folder definitions and chat assignments are kept in `chrome.storage.local`.
-- `host_permissions: claude.ai/*`: the content script needs to read sidebar DOM and inject folder UI on claude.ai. Scoped to claude.ai only.
-- `web_accessible_resources`: required for the content script to dynamic-import its own ES modules. MV3's `content_scripts` manifest entries do not natively support `"type": "module"`, so static imports at the entry point fail. The standard buildless workaround is a tiny bootstrap that calls `import(chrome.runtime.getURL('src/content/main.js'))`, which only works if the imported file is in `web_accessible_resources`. Scoped to `https://claude.ai/*` so no other origin can fetch these files via direct URL. The scope matches `host_permissions`. The content script already runs in claude.ai's page context, so making the source readable from that origin is not a meaningful privacy regression; an attacker who could read these files via WAR could already read them by inspecting the rendered page.
+- `contextMenus`: required for the right-click "Add chat to folder" menu. The service worker registers menu items filtered to claude.ai chat links via `targetUrlPatterns`. The menu only appears when the user right-clicks a link matching `https://claude.ai/chat/*`.
+- `host_permissions: claude.ai/*`: scopes the context menu to claude.ai only. Without this, browsers may surface the menu on other sites or refuse to register it.
 
-We do not request `tabs`, `activeTab`, `<all_urls>`, `scripting`, `downloads`, or any network permissions. `chrome.tabs.create({url})` does not require the `tabs` permission when called with only a URL. Export downloads use `URL.createObjectURL(new Blob(...))` plus an anchor click, no `chrome.downloads`. Minimum viable surface area for the Web Store privacy story.
+We do not request `tabs`, `activeTab`, `<all_urls>`, `scripting`, `downloads`, or any network permissions. `chrome.tabs.create({url})` does not require the `tabs` permission when called with only a URL. Export downloads use `URL.createObjectURL(new Blob(...))` plus an anchor click, no `chrome.downloads`. The earlier v0.1 attempt at a content script required `web_accessible_resources` to dynamic-import modules; the pivot to context menus dropped that requirement entirely.
+
+Minimum viable surface area for the Web Store privacy story: two permissions and one host pattern, all narrow.
 
 ## Extension ID
 
@@ -267,12 +274,12 @@ Schema fields exist for these where relevant. UI lands in v0.2 or later.
 - Bulk operations (select multiple chats, assign to folder).
 - Search expansion (per-item search, full-text across descriptions).
 - Keyboard shortcuts. `Alt+1-9` to assign current chat to one of the top 9 folders. The `commands` manifest key has a hard limit of 4 default shortcuts. Beyond 4, the user assigns keys via `chrome://extensions/shortcuts`. v0.2 ships `Alt+1-4` as defaults.
-- Theme-aware content script popover. The popover injected by the content script on claude.ai uses hard-coded neon-purple chrome (background, borders, text colors) regardless of the user's `activeTheme`. This is intentional for v0.1: content scripts run in a different document than the popup and cannot read the popup's `:root` CSS custom properties directly. v0.2 path: write the resolved theme tokens to `chrome.storage.local` (or a dedicated subkey), have the content script read them on init and on `subscribeToChanges`, then inject a `<style>` element setting CSS custom properties for `.cwcf-popover` and friends. Roughly 30-50 lines of additional code split between `main.js` and a small theme broadcast helper.
-- Title cache refresh on every sweep. `main.js` currently writes `itemTitles[itemRef]` only on first injection per anchor (when the sentinel goes from absent to present). If the user renames a chat in claude.ai's UI, the cached title goes stale until the extension reloads. v0.2 should refresh the title on each sweep, comparing `anchor.innerText` against the cache and writing only on change to avoid storage churn.
-- Projects auto-discovery. v0.1 lets users manually assign project URLs to folders alongside chats. v0.2 may add automatic surfacing of claude.ai's project list as virtual folders.
-- Content script keyboard reorder (HTML5 native DnD has no keyboard equivalent; v0.2 if anyone reports the gap).
+- Title cache. The popup's "items in folder" view shows item refs (`chat:<uuid>`) plus a cached title where one is present. v0.1 has no path for populating that cache (the content script that did so was removed in the pivot). v0.2 options: a minimal content script whose only job is reading `<a href="/chat/...">` titles into the cache, or surfacing the cache as "tab title at time of assignment" populated when the user right-clicks. For now, the popup falls back to displaying `chat <uuid-prefix>` when no cached title exists.
+- In-page discoverability surface. Right-click is efficient but not self-evident to users who do not read the README. v0.2 may add a small affordance somewhere on the page (top-of-sidebar pill, toolbar-icon badge, or similar) once usage data shows where it is needed. The pivot history note explains why this is deferred rather than included.
+- Projects support. The schema accepts `project:<uuid>` typed item refs and `selectors.js` exports a project URL pattern. v0.1 right-click only fires on chat links. v0.2 can extend the context menu to project URLs (`https://claude.ai/project/*`) once the project DOM has been characterized. Recon for projects is captured in DOM-NOTES.
+- /recents page support. Same shape as projects: anchors there carry a different Datadog action name (`conversation-cell`) but the URL pattern is identical (`/chat/<uuid>`). v0.1 right-click works on any link matching the chat URL pattern, including those rendered on /recents, so this may already work without further effort. v0.2 verifies and documents.
 - Three-button-or-more bulk import options (replace specific folder, merge with override, etc).
 
 ## Why no bundler
 
-ES modules work natively in MV3 with `"type": "module"` on the popup HTML's `<script>` tag. Plain JS, no transpilation, no build step. Adds a bundler (Vite, esbuild, etc.) later if and only if it is justified by TypeScript adoption, code splitting, or a polyfill need that doesn't exist in v0.1.
+ES modules work natively in MV3 with `"type": "module"` on the popup HTML's `<script>` tag and on the service worker's manifest declaration. Plain JS, no transpilation, no build step. Adds a bundler (Vite, esbuild, etc.) later if and only if it is justified by TypeScript adoption, code splitting, or a polyfill need that doesn't exist in v0.1.
