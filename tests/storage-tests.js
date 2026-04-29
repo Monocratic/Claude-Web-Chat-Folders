@@ -172,8 +172,9 @@ const tests = [
     const state1 = await S.loadState();
     assertEqual(state1.folders[0].icon, '\u{1F527}', 'icon stored');
     assertEqual(state1.settings.recentEmojis[0], '\u{1F527}', 'emoji recorded as recent');
-    await assertThrows(() => S.setFolderIcon(f.id, 'not-emoji'), 'emoji', 'rejects non-emoji');
-    await assertThrows(() => S.setFolderIcon(f.id, '\u{1F527}\u{1F4BB}'), 'one grapheme', 'rejects multiple emoji');
+    await assertThrows(() => S.setFolderIcon(f.id, 'x'), 'emoji', 'rejects non-emoji single char');
+    await assertThrows(() => S.setFolderIcon(f.id, 'ab'), 'grapheme', 'rejects multi-cluster non-emoji');
+    await assertThrows(() => S.setFolderIcon(f.id, '\u{1F527}\u{1F4BB}'), 'grapheme', 'rejects multiple emoji');
     await S.setFolderIcon(f.id, null);
     const state2 = await S.loadState();
     assertEqual(state2.folders[0].icon, null, 'null clears icon');
