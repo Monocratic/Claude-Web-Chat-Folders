@@ -217,14 +217,16 @@ MV3 forbids inline event handlers (`onclick="..."`), inline `<script>` tags, and
 ## Permissions
 
 ```
-permissions:       ["storage"]
-host_permissions:  ["https://claude.ai/*"]
+permissions:                ["storage"]
+host_permissions:           ["https://claude.ai/*"]
+web_accessible_resources:   src/content/*.js, src/lib/*.js scoped to https://claude.ai/*
 ```
 
 Justification:
 
 - `storage`: folder definitions and chat assignments are kept in `chrome.storage.local`.
 - `host_permissions: claude.ai/*`: the content script needs to read sidebar DOM and inject folder UI on claude.ai. Scoped to claude.ai only.
+- `web_accessible_resources`: required for the content script to dynamic-import its own ES modules. MV3's `content_scripts` manifest entries do not natively support `"type": "module"`, so static imports at the entry point fail. The standard buildless workaround is a tiny bootstrap that calls `import(chrome.runtime.getURL('src/content/main.js'))`, which only works if the imported file is in `web_accessible_resources`. Scoped to `https://claude.ai/*` so no other origin can fetch these files via direct URL. The scope matches `host_permissions`. The content script already runs in claude.ai's page context, so making the source readable from that origin is not a meaningful privacy regression; an attacker who could read these files via WAR could already read them by inspecting the rendered page.
 
 We do not request `tabs`, `activeTab`, `<all_urls>`, `scripting`, `downloads`, or any network permissions. `chrome.tabs.create({url})` does not require the `tabs` permission when called with only a URL. Export downloads use `URL.createObjectURL(new Blob(...))` plus an anchor click, no `chrome.downloads`. Minimum viable surface area for the Web Store privacy story.
 
@@ -265,6 +267,8 @@ Schema fields exist for these where relevant. UI lands in v0.2 or later.
 - Bulk operations (select multiple chats, assign to folder).
 - Search expansion (per-item search, full-text across descriptions).
 - Keyboard shortcuts. `Alt+1-9` to assign current chat to one of the top 9 folders. The `commands` manifest key has a hard limit of 4 default shortcuts. Beyond 4, the user assigns keys via `chrome://extensions/shortcuts`. v0.2 ships `Alt+1-4` as defaults.
+- Theme-aware content script popover. The popover injected by the content script on claude.ai uses hard-coded neon-purple chrome (background, borders, text colors) regardless of the user's `activeTheme`. This is intentional for v0.1: content scripts run in a different document than the popup and cannot read the popup's `:root` CSS custom properties directly. v0.2 path: write the resolved theme tokens to `chrome.storage.local` (or a dedicated subkey), have the content script read them on init and on `subscribeToChanges`, then inject a `<style>` element setting CSS custom properties for `.cwcf-popover` and friends. Roughly 30-50 lines of additional code split between `main.js` and a small theme broadcast helper.
+- Title cache refresh on every sweep. `main.js` currently writes `itemTitles[itemRef]` only on first injection per anchor (when the sentinel goes from absent to present). If the user renames a chat in claude.ai's UI, the cached title goes stale until the extension reloads. v0.2 should refresh the title on each sweep, comparing `anchor.innerText` against the cache and writing only on change to avoid storage churn.
 - Projects auto-discovery. v0.1 lets users manually assign project URLs to folders alongside chats. v0.2 may add automatic surfacing of claude.ai's project list as virtual folders.
 - Content script keyboard reorder (HTML5 native DnD has no keyboard equivalent; v0.2 if anyone reports the gap).
 - Three-button-or-more bulk import options (replace specific folder, merge with override, etc).
