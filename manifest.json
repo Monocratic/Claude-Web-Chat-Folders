@@ -9,5 +9,19 @@
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_title": "Claude Chat Folders"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["src/content/content.js"],
+      "css": ["src/content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/*.js", "src/lib/*.js"],
+      "matches": ["https://claude.ai/*"]
+    }
+  ]
 }
