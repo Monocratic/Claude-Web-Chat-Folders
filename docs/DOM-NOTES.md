@@ -6,37 +6,60 @@ claude.ai is a React SPA. DOM changes without notice. When the inject button sto
 
 ## Last verified working
 
-- Date: TBD (populate on first content script reconnaissance)
-- Browser: TBD (Vivaldi version, Chrome version)
-- claude.ai version: N/A (no public version string)
+- Date: 2026-04-29
+- Browser: Brave (primary dev target alongside Vivaldi)
+- claude.ai version: current (no public version string)
 
 When you update selectors, also update this section with the date and browser used to verify.
 
 ## Anchors we depend on
 
-### Chat list links
+### Chat list links (sidebar)
+
+Primary anchor with defensive AND-condition:
+
+```
+a[href^="/chat/"][data-dd-action-name="sidebar-chat-item"]
+```
+
+Fallback if the Datadog attribute drifts:
 
 ```
 a[href^="/chat/"]
 ```
 
-Each chat in the sidebar is an anchor tag with `href` starting `/chat/`. The UUID is the path segment after `/chat/`. Example:
+The Datadog `data-dd-action-name` attribute is set for the platform's analytics. It has been stable, and we use it as a secondary anchor on top of the URL pattern so the selector survives either side changing alone. The fallback URL-only selector is what `selectors.js` uses if the Datadog attribute disappears.
 
-```html
-<a href="/chat/abc12345-...-...">Cached chat title text</a>
-```
+Each anchor is the row itself in the sidebar. No wrapper div carries the row semantics; the `<a>` is `position: relative` with `display: inline-flex`, and its children are the title text and (after our injection) the inject button.
 
-This selector has been stable across multiple claude.ai redesigns because it is structural (link to a chat URL) rather than presentational. Do not replace it with a class-based selector unless the URL pattern itself changes.
-
-UUID extraction: `href.match(/^\/chat\/([0-9a-f-]+)/i)` then validate against the standard 8-4-4-4-12 hex pattern via the regex in `storage.js`.
+UUID extraction: `href.match(/^\/chat\/([0-9a-f-]+)/i)` then validate against the standard 8-4-4-4-12 hex pattern via the regex in `storage.js`. Chat UUIDs in observed accounts are UUIDv7; the validation regex is hex-only and does not care about version.
 
 ### Chat title text
 
-TBD. The current best guess: `el.innerText` of the `<a>` element itself, or a child text node. We grab `innerText` defensively rather than depending on a specific child class. Verify on first content script run and document the actual structure here.
+The chat title is rendered in a `<span>` inside the anchor's child `<div>`. We read `anchor.innerText.trim()` defensively rather than depending on the specific child class. The trim handles incidental whitespace from React's rendering.
 
 ### Sidebar container
 
-TBD. We anchor on the chat link selector itself and walk upward to find the row container suitable for inject button placement. Document the upward walk path here once verified (for example: "two `parentElement` hops to reach the row that contains hover backgrounds").
+The sidebar root is the page's `<nav>` element. There is one `<nav>` per page on claude.ai and it persists across SPA navigation between chats.
+
+```js
+const sidebar = document.querySelector('nav');
+```
+
+This is the MutationObserver target. Observe with `{ childList: true, subtree: true }`. Subtree because chat rows mount as `<li>` children of `<ul>` children of various sections inside the nav.
+
+Sidebar `<nav>` classes (current, do not anchor on these): `flex flex-col px-0 fixed left-0 border-r-0.5 h-screen lg:bg-gradient-to-t from-b...` (Tailwind utility classes, will change).
+
+### Datadog action names in the sidebar
+
+These are the four observed `data-dd-action-name` values inside the sidebar:
+
+- `sidebar-chat-item` - chat anchors (our v0.1 target)
+- `sidebar-more-item` - the "All chats" button at the bottom of the chat list (links to `/recents`)
+- `sidebar-nav-item` - top-level nav links (Recents, Projects, etc.)
+- `sidebar-new-item` - the "New chat" button
+
+The `sidebar-` prefix is consistent. Datadog action names are likely the most stable anchor surface in the sidebar because Anthropic's analytics dashboards depend on them.
 
 ## Selectors known to be unstable
 
@@ -49,24 +72,71 @@ Do not use these as anchors:
 
 ## Known DOM behaviors
 
-To populate during reconnaissance and ongoing observation:
-
-- Navigation between chats does NOT trigger a full page reload. The content script and observer survive navigation; selectors must be re-evaluated against the new DOM.
-- Chat list items mount and unmount lazily as the user scrolls. The MutationObserver must handle late mounts; no reliance on a fixed initial DOM.
-- New chats appear at the top of the list when created.
+- Navigation between chats does NOT trigger a full page reload. The content script and observer survive navigation. The sidebar `<nav>` element persists across navigation; selectors must be re-evaluated when new rows mount but the nav itself is the stable observer target.
+- The sidebar shows a fixed window of recent chats (47 in the recon account, total varies per account). Older chats are not lazy-mounted into the sidebar via scroll. They live on a separate `/recents` page accessed via the "All chats" button at the bottom of the sidebar (the button with `data-dd-action-name="sidebar-more-item"`). v0.1 covers sidebar chats only; the `/recents` page is a v0.2 surface (see section below).
+- New chats appear at the top of the sidebar list when created. The MutationObserver picks them up on insertion and runs the injection sweep.
+- Chat anchors carry a `group` Tailwind class. Tailwind's group pattern means children styled with `group-hover:` activate on parent hover. Our inject button relies on the anchor's `:hover` and `:focus-within` directly (not group-hover) since the button is an injected child and we want to keep the styling self-contained.
 - The sidebar can be collapsed by the user. When collapsed, the chat list may stay in DOM with `display: none` or similar on a parent. Inject buttons on hidden rows are inert.
-- Theme switching on claude.ai (light/dark/auto) changes class names on `<body>` or `<html>`. Inject button colors should read on both light and dark backgrounds without depending on claude.ai's class names.
+- Theme switching on claude.ai (light/dark/auto) changes class names on `<body>` or `<html>`. Inject button colors should read on both light and dark backgrounds without depending on claude.ai's class names. Use the user's extension theme accent color, not claude.ai's theme.
 - Page-level navigation away from claude.ai (closing the tab, navigating to another origin) tears down everything. No cleanup needed beyond what the browser handles.
 - bfcache restore (back/forward navigation) freezes JS execution but does not tear down observers. Re-run the initial sweep on the `pageshow` event to catch DOM diffs that happened during the freeze.
 
 ## Inject button placement strategy
 
-To populate after first reconnaissance:
+The chat anchor `<a>` is `position: relative` natively, so we can append an absolutely-positioned button as a child without any wrapper changes. The button floats over the right edge of the anchor and does not affect layout flow.
 
-- Where on the row does the button live? Right edge, left edge, or hover-only-overlay?
-- What sentinel attribute keeps re-injection idempotent? Current plan: `data-cwcf-injected="true"` on the row container.
-- How does the button avoid layout shift when added? Reserve space, or use absolute positioning.
-- How does the button visually belong to the row without fighting claude.ai's hover styles?
+```html
+<a class="... group relative inline-flex"
+   data-cwcf-injected="true"
+   data-dd-action-name="sidebar-chat-item"
+   href="/chat/...">
+  <div class="...">
+    <span>{title}</span>
+  </div>
+  <button class="cwcf-inject-btn"
+          data-cwcf-button="true"
+          aria-label="Add chat to folder"
+          aria-haspopup="menu">
+    <svg>...</svg>
+  </button>
+</a>
+```
+
+Sentinel attribute: `data-cwcf-injected="true"` on the anchor itself. The observer skips anchors that already have this attribute. Idempotent on re-render.
+
+Visibility: the button is hidden by default (`opacity: 0`) and revealed on the anchor's `:hover` or `:focus-within`. Always-visible mode is governed by the `injectButtonStyle` setting (`dot` / `icon` / `pill`) and `injectButtonPosition` (`right` / `left` / `hoverOnly`). The hover-only mode matches claude.ai's existing convention of revealing per-row affordances on hover.
+
+Click handling on the inject button:
+
+```js
+button.addEventListener('click', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  togglePopover(button, itemRef);
+});
+```
+
+Both `preventDefault` (to stop the anchor's navigation) and `stopPropagation` (to stop the click reaching any anchor handler) are required because the button is a child of the anchor.
+
+### Folder assignment popover
+
+The mini-menu opened by the inject button is a popover, not a `<dialog>`. Reasoning: a modal blocks the entire page for what should be a quick "click button → pick folder → done" interaction. A popover lets the user keep scrolling and feels native to the sidebar UX.
+
+Implementation:
+
+- Absolutely-positioned `<div class="cwcf-popover">`, appended to `<body>` (not to the anchor or sidebar). Appending to body lets the popover extend beyond the sidebar's bounds and escape any `overflow: hidden` clipping on ancestors.
+- Position computed from the inject button's `getBoundingClientRect()`. Default placement to the right of the button. Edge-collision flips to the left if it would overflow viewport.
+- Click-outside listener on `document` (capturing phase) closes it. Listener self-removes on close.
+- `Escape` key closes it. `Tab` cycles through the folder buttons. `Enter`/`Space` activates the focused folder.
+- Renders the folder list as buttons with checkboxes (multi-folder per chat per locked spec). Click toggles assignment via `assignItemToFolder` / `removeItemFromFolder`.
+- Empty state: "No folders yet. Create one in the popup." with a non-functional button (no `chrome.action.openPopup` permission in v0.1; acceptable degradation).
+- No "Create folder" affordance inline. v0.2 can add it. v0.1 sends the user to the toolbar popup for that.
+- `z-index: 2147483647` (max int) so the popover renders above any claude.ai UI element. If claude.ai uses similar nuclear values somewhere we will see it during testing.
+
+ARIA:
+
+- Inject button: `aria-label`, `aria-haspopup="menu"`, `aria-expanded` toggled.
+- Popover: `role="menu"`. Focus moves to the first folder button on open and returns to the inject button on close.
 
 ## When something breaks
 
@@ -94,6 +164,38 @@ Steps to investigate when the extension stops injecting buttons or injects them 
 ## When something is unclear
 
 When in doubt about whether a selector is stable, prefer the more structural choice. Anchor on URL patterns first. Then `data-testid` values that name structural concerns ("sidebar", "chat-list-item"). Then ARIA roles. Class names absolute last resort.
+
+## All chats page (v0.2 reference, not implemented in v0.1)
+
+The sidebar shows a fixed window of recent chats. Older chats live on a separate "All chats" page reached via the `sidebar-more-item` button at the bottom of the sidebar.
+
+### URL pattern
+
+```
+https://claude.ai/recents
+```
+
+### Anchor on /recents
+
+Chat anchors on `/recents` carry a different Datadog action name than sidebar anchors:
+
+```
+a[href^="/chat/"][data-dd-action-name="conversation-cell"]
+```
+
+The same chat URL pattern (`/chat/<uuid>`) but the cell attribute differs from the sidebar's `sidebar-chat-item`. The sidebar still renders on `/recents` (the `<nav>` persists across navigation), so a query for `a[href^="/chat/"]` on `/recents` returns both `sidebar-chat-item` rows and `conversation-cell` cards. v0.2 selectors must distinguish them via the Datadog attribute.
+
+### Recon sample
+
+In the dev account, `/recents` listed 77 total chat anchors, of which 47 were the `sidebar-chat-item` rows (the same sidebar that renders on every page) and the remainder were `conversation-cell` cards specific to `/recents`.
+
+### Implementation notes for v0.2
+
+- **Cell DOM structure not fully captured.** The recon hit a tangent before the `conversation-cell` outerHTML was logged. v0.2 must re-verify cell dimensions, structure, and the title text location before designing the inject button placement on cards.
+- **Likely card layout, not row layout.** Cells on `/recents` appear to be cards in a grid, not thin sidebar rows. The inject button absolute-position-right-edge pattern that works for sidebar rows may need adaptation for cards (different size, different hover semantics).
+- **Route detection.** The content script needs to know when the user is on `/recents`. Wrap `history.pushState`/`replaceState` to fire a custom event, or listen to `popstate` plus check `location.pathname`. The `<nav>` MutationObserver alone will not catch main-content area changes.
+- **Separate observer target.** Add a second observer scoped to the main content area on `/recents`. The sidebar observer keeps doing its job; the content observer handles cards on this page.
+- **v0.1 user workaround for chats not in sidebar.** Pin the chat (Star button on claude.ai) so it appears in the sidebar's Starred section, assign to folder via the inject button, then unpin. Awkward but workable until v0.2 ships.
 
 ## Project list (v0.2 reference, not implemented in v0.1)
 
