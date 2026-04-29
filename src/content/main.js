@@ -23,6 +23,7 @@ export async function start() {
   state.unsubscribe = S.subscribeToChanges((newValue) => {
     if (!newValue) {
       state.loaded = null;
+      if (state.popover) closePopover();
       S.loadState().then(s => { state.loaded = s; if (state.popover) renderPopoverList(); });
       return;
     }
@@ -60,6 +61,7 @@ function queueSweep() {
 function runSweep() {
   if (!state.loaded || !state.loaded.settings.showInjectButtons) {
     removeAllInjectedButtons();
+    if (state.popover) closePopover();
     return;
   }
 
