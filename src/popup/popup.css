@@ -499,6 +499,16 @@ body.cwcf-ready {
 
 /* ----- Modal / dialog ----- */
 
+/* Author-level reinforcement of the UA dialog:not([open]) hide rule. Without
+   this, any author rule that sets display on a .modal subclass (such as
+   .modal--emoji setting display: flex) would tie the UA selector on
+   specificity and win the cascade, leaving the dialog visible even when
+   closed. This rule's specificity (0,2,1) beats both the UA rule (0,1,1)
+   and any single-class .modal--variant rule (0,1,1). */
+dialog.modal:not([open]) {
+  display: none;
+}
+
 dialog.modal {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
