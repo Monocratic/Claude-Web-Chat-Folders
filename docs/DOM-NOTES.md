@@ -30,14 +30,6 @@ This selector has been stable across multiple claude.ai redesigns because it is 
 
 UUID extraction: `href.match(/^\/chat\/([0-9a-f-]+)/i)` then validate against the standard 8-4-4-4-12 hex pattern via the regex in `storage.js`.
 
-### Project list links
-
-```
-a[href^="/project/"]
-```
-
-To verify on first content script run. Anthropic's projects appear in their own sidebar section with URL pattern `/project/<uuid>`. UUID format assumed identical to chat UUIDs. If projects use a different ID shape, relax the validation regex in `storage.js` (currently `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`).
-
 ### Chat title text
 
 TBD. The current best guess: `el.innerText` of the `<a>` element itself, or a child text node. We grab `innerText` defensively rather than depending on a specific child class. Verify on first content script run and document the actual structure here.
@@ -45,10 +37,6 @@ TBD. The current best guess: `el.innerText` of the `<a>` element itself, or a ch
 ### Sidebar container
 
 TBD. We anchor on the chat link selector itself and walk upward to find the row container suitable for inject button placement. Document the upward walk path here once verified (for example: "two `parentElement` hops to reach the row that contains hover backgrounds").
-
-### Project section container (projects only)
-
-TBD. To support project-specific behavior, we may need to detect the projects section as a separate scope from the chat section. Verify whether the sidebar groups them under distinct DOM containers.
 
 ## Selectors known to be unstable
 
@@ -106,3 +94,44 @@ Steps to investigate when the extension stops injecting buttons or injects them 
 ## When something is unclear
 
 When in doubt about whether a selector is stable, prefer the more structural choice. Anchor on URL patterns first. Then `data-testid` values that name structural concerns ("sidebar", "chat-list-item"). Then ARIA roles. Class names absolute last resort.
+
+## Project list (v0.2 reference, not implemented in v0.1)
+
+Projects are deferred to v0.2. The recon below was captured during the v0.1 content script reconnaissance and is preserved here so the v0.2 implementation does not have to re-discover it. Storage already accepts `project:<uuid>` typed item refs, so adding projects later is purely additive content script work.
+
+### URL pattern
+
+- Listing page: `https://claude.ai/projects` (plural)
+- Individual project: `https://claude.ai/project/<uuid>` (singular)
+
+Projects do not appear in the main sidebar with chats. They are accessed via the `/projects` listing page or by direct URL.
+
+### Project cell anchor on the listing page
+
+```
+a[href^="/project/"][data-dd-action-name="project-cell"]
+```
+
+Defensive AND-condition. If either the URL pattern or the Datadog action name drifts, the other still anchors us.
+
+### UUID format
+
+Projects use UUIDv7 (the third group's leading hex digit is `7`). The existing storage validation regex (`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`) is hex-only and does not care about UUID version, so it matches without changes.
+
+### Project cell text structure
+
+`innerText` is two lines:
+
+```
+{title}
+Updated {N} days ago
+```
+
+Cached `itemTitle` should be the first line only, split on `\n`.
+
+### Implementation notes for v0.2
+
+- **Route detection.** The content script needs to know when the user is on `/projects`. Wrap `history.pushState` and `history.replaceState` to fire a custom event, or listen to `popstate` plus check `location.pathname`. The MutationObserver alone will not help if the route changes within the SPA without a DOM-visible trigger near the top of the tree.
+- **Separate observer target.** Inject targets on `/projects` are project cards in a grid, not sidebar rows. Different selector chain, different observer target than the chat sidebar.
+- **No in-project inject target yet.** The individual project view at `/project/<uuid>` does not have an obvious place for the inject button. A project-header button or a popup-side "open in folder" affordance would need a separate design pass. Defer until requested.
+- **Recon sample.** Five-project sample on the dev account confirmed the pattern. UUIDv7 across all five.
