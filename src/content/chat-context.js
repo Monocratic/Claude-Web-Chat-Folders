@@ -19,20 +19,36 @@ export function setState(state) {
 }
 
 function onContextMenu(e) {
-  const anchor = e.target.closest('a[href^="/chat/"]');
-  if (!anchor) return;
-  const uuid = extractChatUuid(anchor.getAttribute('href'));
-  if (!uuid) return;
+  let itemRef = null;
+  let href = null;
+
+  // Panel chat rows are <div data-item-ref="chat:UUID"> with no anchor in
+  // the tree, so anchor-only matching misses them. Try the dataset first;
+  // fall back to a chat anchor for sidebar/recents <a> elements.
+  const refEl = e.target.closest('[data-item-ref^="chat:"]');
+  if (refEl) {
+    itemRef = refEl.getAttribute('data-item-ref');
+    const uuid = itemRef.slice('chat:'.length);
+    href = `/chat/${uuid}`;
+  } else {
+    const anchor = e.target.closest('a[href^="/chat/"]');
+    if (anchor) {
+      const uuid = extractChatUuid(anchor.getAttribute('href'));
+      if (uuid) {
+        itemRef = `chat:${uuid}`;
+        href = anchor.getAttribute('href');
+      }
+    }
+  }
+  if (!itemRef) return;
 
   e.preventDefault();
   e.stopPropagation();
 
-  const itemRef = `chat:${uuid}`;
   const sourceFolderId = inferSourceFolderId(e.target);
   showChatContextMenu({
     itemRef,
-    href: anchor.getAttribute('href'),
-    title: (anchor.textContent || '').trim(),
+    href,
     sourceFolderId,
     clientX: e.clientX,
     clientY: e.clientY
@@ -48,7 +64,7 @@ function inferSourceFolderId(targetEl) {
   return null;
 }
 
-function showChatContextMenu({ itemRef, href, title, sourceFolderId, clientX, clientY }) {
+function showChatContextMenu({ itemRef, href, sourceFolderId, clientX, clientY }) {
   closeMenu();
 
   const menu = document.createElement('div');
