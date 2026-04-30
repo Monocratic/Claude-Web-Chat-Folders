@@ -60,7 +60,7 @@ async function assertThrows(fn, msgPart, label) {
 const tests = [
   ['empty storage returns default state', async () => {
     const s = await S.loadState();
-    assertEqual(s.version, 1, 'version should be 1');
+    assertEqual(s.version, 2, 'version should be 2');
     assertEqual(s.folders, [], 'folders should be empty');
     assertEqual(s.assignments, {}, 'assignments should be empty');
     assertEqual(s.itemTitles, {}, 'itemTitles should be empty');
@@ -276,7 +276,7 @@ const tests = [
     assertEqual(parsed.exportedBy, 'cwcf', 'exportedBy stamped');
     assertEqual(parsed.appVersion, '0.1.0', 'appVersion stamped');
     assertTrue(typeof parsed.exportedAt === 'string', 'exportedAt is string');
-    assertEqual(parsed.version, 1, 'schema version stamped');
+    assertEqual(parsed.version, 2, 'schema version stamped');
     assertTrue(Array.isArray(parsed.folders), 'folders array present');
     assertEqual(parsed.settings, undefined, 'settings not exported');
   }],
