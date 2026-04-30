@@ -6,11 +6,17 @@ The extension adds a toolbar popup for managing folders, and a "Add chat to fold
 
 ## Usage
 
-**To assign a chat to a folder:** right-click the chat link in claude.ai's sidebar, hover "Add chat to folder", click the folder name. The assignment is immediate and persists locally.
+**Quick assignment from claude.ai's sidebar:** right-click any chat link, hover "Add chat to folder", click the folder name. Assignment is immediate.
 
-**To create or manage folders:** click the extension icon in your toolbar. The popup lets you create folders, edit names/colors/icons, pin folders, drag-reorder, view chats inside a folder, change settings, and import/export your data.
+**In-page folder strip (default mode):** a thin vertical strip on the left edge of claude.ai shows your pinned folders as colored swatches. Drag a chat from the sidebar onto a swatch to assign it.
 
-**No folders yet?** The right-click menu's first item links to the popup so you can set up.
+**Folder panel (organize mode):** click the panel toggle in the strip header to open a full folder tree overlay over the sidebar. Lets you see all folders nested, drag chats between folders, drag folders to nest them, search across folders and chats, and run auto-organize.
+
+**Auto-organize:** in the folder panel, click the lightning bolt icon. Chats whose titles match a folder name (by default a substring match, configurable in settings) are suggested under those folders with an amber `?` badge. Click the row to confirm assignment, click the `✕` to dismiss.
+
+**Toolbar popup:** click the extension icon to manage folders. Create, rename, recolor, pin, drag-reorder, nest folders by setting a parent, view chats inside, change settings, import and export.
+
+**No folders yet?** The right-click menu's first item, the strip toggle, and the panel header all link to the popup so you can set up.
 
 ## Install (unpacked from source)
 

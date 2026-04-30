@@ -1,14 +1,18 @@
 # Architecture
 
-This document captures the design decisions for v0.1 of Claude Web Chat Folders. It exists so future contributors (including future-you and a fresh Claude session) can pick up the codebase without re-litigating settled questions.
+This document captures the design decisions for Claude Web Chat Folders. It exists so future contributors (including future-you and a fresh Claude session) can pick up the codebase without re-litigating settled questions.
 
 ## Goals
 
 Add folder organization to claude.ai chats. Local storage only. JSON export/import for portability. No backend, no API access, no telemetry.
 
-Two UI surfaces:
-1. Toolbar popup for folder management (folder CRUD, settings, import/export).
-2. Browser right-click context menu on claude.ai chat links for per-chat assignment.
+Four UI surfaces (v0.1 + v0.2):
+1. **Toolbar popup** - folder CRUD, settings, import/export, nested-tree view of folders, drag-reorder within sections, the only place to create or delete folders.
+2. **Browser right-click context menu** - per-chat assignment from claude.ai's sidebar without opening the popup. Service-worker-driven via `chrome.contextMenus`. Zero claude.ai DOM dependency.
+3. **In-page folder strip (default view mode)** - thin vertical overlay on claude.ai's left edge showing pinned folders as drop targets. Content-script-driven, fixed-position, viewport-anchored.
+4. **In-page folder panel (organize view mode)** - full folder tree overlay over claude.ai's sidebar with search, drag-and-drop, nested folders, auto-organize. Content-script-driven, fixed-position, anchored to claude.ai's `<nav>` rect.
+
+The view mode (`default` vs `organize`) is a per-device setting persisted in `chrome.storage.local`. Toggle buttons in both the strip and the panel flip the setting; subscribeToChanges propagates the change to all open claude.ai tabs.
 
 ## Non-goals (v0.1)
 
@@ -271,9 +275,19 @@ Vivaldi may honor `update_url` for non-Web-Store extensions where Chrome no long
 
 v1.0: Chrome Web Store. Same source, same repo, built from a tagged release. README will list both install paths. The `key` field already in `manifest.json` matches the eventual Web Store ID, so users who installed unpacked during v0.1 get a clean upgrade path with their data intact.
 
+## Implemented in v0.2 (was deferred from v0.1)
+
+These items moved from "deferred" to "shipped" with the v0.2 visual layer:
+
+- **In-page surfaces.** Folder strip (default mode) and folder panel (organize mode) now exist on claude.ai as fixed-position overlays. Toggle setting `viewMode` flips between them.
+- **Nested folders.** `parentId` schema field with cycle detection (`isAncestor`), recursive helpers (`getRootFolders`, `getChildFolders`, `getDescendantFolders`, `getAncestorChain`), and the public `moveToParent` API.
+- **Drag-and-drop assignment.** Native HTML5 DnD on chat anchors plus drop targets in strip and panel. Source/target matrix: claude.ai sidebar → strip swatch / panel folder, panel chat → different panel folder, panel chat → Unsorted, panel folder → different panel folder (cycle-checked), panel folder → root drop zone.
+- **Auto-organize by name match.** Lightning bolt button in panel header. Match mode (`contains` / `exact`) configurable in settings. Suggestions are in-memory (per-panel-instance), not persisted.
+- **Title cache via in-page sweep.** Content script's MutationObserver reads `anchor.innerText` into `storage.itemTitles`, throttled at 30s minimum interval per item ref. Resolves the v0.1 "chat <uuid-prefix>" display fallback for any chat that has been visible in the sidebar since the extension loaded.
+
 ## Deferred features
 
-Schema fields exist for these where relevant. UI lands in v0.2 or later.
+Schema fields exist for these where relevant. UI lands in v0.3 or later.
 
 - Custom theme override panel (the user-facing UI for setting per-token hex values; the schema field `customTheme` is honored by `resolveTheme` already).
 - Density toggle (`density: "comfortable" | "compact"`).
@@ -282,12 +296,15 @@ Schema fields exist for these where relevant. UI lands in v0.2 or later.
 - Recently-used folder sort (`lastUsedAt` field exists, no UI yet).
 - Bulk operations (select multiple chats, assign to folder).
 - Search expansion (per-item search, full-text across descriptions).
-- Keyboard shortcuts. `Alt+1-9` to assign current chat to one of the top 9 folders. The `commands` manifest key has a hard limit of 4 default shortcuts. Beyond 4, the user assigns keys via `chrome://extensions/shortcuts`. v0.2 ships `Alt+1-4` as defaults.
-- Title cache. The popup's "items in folder" view shows item refs (`chat:<uuid>`) plus a cached title where one is present. v0.1 has no path for populating that cache (the content script that did so was removed in the pivot). v0.2 options: a minimal content script whose only job is reading `<a href="/chat/...">` titles into the cache, or surfacing the cache as "tab title at time of assignment" populated when the user right-clicks. For now, the popup falls back to displaying `chat <uuid-prefix>` when no cached title exists.
-- In-page discoverability surface. Right-click is efficient but not self-evident to users who do not read the README. v0.2 may add a small affordance somewhere on the page (top-of-sidebar pill, toolbar-icon badge, or similar) once usage data shows where it is needed. The pivot history note explains why this is deferred rather than included.
-- Projects support. The schema accepts `project:<uuid>` typed item refs and `selectors.js` exports a project URL pattern. v0.1 right-click only fires on chat links. v0.2 can extend the context menu to project URLs (`https://claude.ai/project/*`) once the project DOM has been characterized. Recon for projects is captured in DOM-NOTES.
-- /recents page support. Same shape as projects: anchors there carry a different Datadog action name (`conversation-cell`) but the URL pattern is identical (`/chat/<uuid>`). v0.1 right-click works on any link matching the chat URL pattern, including those rendered on /recents, so this may already work without further effort. v0.2 verifies and documents.
+- Keyboard shortcuts. `Alt+1-9` to assign current chat to one of the top 9 folders. The `commands` manifest key has a hard limit of 4 default shortcuts. Beyond 4, the user assigns keys via `chrome://extensions/shortcuts`.
+- Theme broadcast to content script. The strip and panel currently use hard-coded neon-purple chrome regardless of `activeTheme`. v0.3 path: write resolved theme tokens to a dedicated storage subkey, content script reads on init and on `subscribeToChanges`, injects a `<style>` element setting CSS custom properties for `.cwcf-strip` and `.cwcf-panel` selectors.
+- Projects support. The schema accepts `project:<uuid>` typed item refs and `selectors.js` exports a project URL pattern. v0.2 right-click only fires on chat links. v0.3 can extend the context menu and DnD targets to project URLs once the project DOM has been characterized. Recon for projects is captured in DOM-NOTES.
+- /recents page support. Same shape as projects: anchors there carry a different Datadog action name (`conversation-cell`) but the URL pattern is identical (`/chat/<uuid>`). The right-click context menu's `targetUrlPatterns` already covers `/chat/<uuid>` regardless of which page the link is on, so this may already work for the menu. The strip/panel drag sources are scoped to the sidebar (`<nav>`) only; v0.3 may extend to `/recents` cards.
+- Auto-organize by keyword rules. v0.2 ships name-match only. The `folder.autoAssignKeywords` schema field exists for v0.3 keyword rules but is not consumed yet.
+- Auto-organize "apply all" bulk action. v0.2 requires per-suggestion confirm. v0.3 may add an "Apply all suggestions" button.
+- Persistent suggestion dismissals. v0.2 dismissals are in-memory; reload re-suggests. v0.3 may persist a `dismissedSuggestions` set in storage.
 - Three-button-or-more bulk import options (replace specific folder, merge with override, etc).
+- `setFolderCollapsed` public API. v0.2 toggles `folder.collapsed` via direct `chrome.storage.local.set` after re-reading. v0.3 may add the public mutator if more callers need single-field folder updates.
 
 ## Why no bundler
 

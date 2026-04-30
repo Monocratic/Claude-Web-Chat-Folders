@@ -216,11 +216,13 @@ The thin folder strip in default mode is also a `position: fixed` overlay, ancho
 
 These are the recon items that v0.2 implementation commits depend on. Each is verified once per fresh claude.ai DOM and the result is captured in this file. Re-run if the surface breaks during testing.
 
-- [ ] **`<nav>` element resolves.** Sanity check before any v0.2 work: `document.querySelector('nav')` returns the sidebar root. Pre-implementation baseline.
+Implementation note: the v0.2 commits 3-9 ran inline checks (warn-on-fail in console) for items 1-2 and 4 rather than separate verification rounds. Items 3, 5, 6 are exercised by user behavior in the implemented surfaces and surface as warnings or errors if they fail. The boxes below are checked when either the inline check passes silently in real claude.ai or a manual verification confirms.
 
-- [ ] **Chat anchor selector resolves.** Sanity check that the v0.1 selectors still match: `document.querySelectorAll('a[href^="/chat/"][data-dd-action-name="sidebar-chat-item"]').length > 0`. Pre-implementation baseline.
+- [x] **`<nav>` element resolves.** Verified inline by `main.js` startup: warns to console with `[CWCF] nav element not found at content script start` if missing. Boots cleanly on real claude.ai as of the v0.2 development branch. Re-verify if startup logs surface that warning.
 
-- [ ] **Synthetic-click triggers SPA navigation.** Verify that programmatic `.click()` on an existing chat anchor navigates without a full page reload. Test from console:
+- [x] **Chat anchor selector resolves.** Verified inline by `main.js` startup: warns with `[CWCF] chat anchors not found` if zero anchors. Re-verify if startup logs surface that warning.
+
+- [ ] **Synthetic-click triggers SPA navigation.** Verified by user behavior in the panel: clicking a chat row in the folder panel calls `existing.click()` on the matching `<a href="/chat/<uuid>">` if it's still in DOM. If claude.ai's router didn't intercept that click, the page would full-reload. Manual verification when commit 5 runs in real claude.ai.
 
   ```js
   const a = document.querySelector('a[href^="/chat/"]');
@@ -231,7 +233,7 @@ These are the recon items that v0.2 implementation commits depend on. Each is ve
 
   Page should change route without reloading. Required by v0.2 commit 5 (folder panel chat-row click handler).
 
-- [ ] **dragstart not preempted by claude.ai's React handler.** Verify that native HTML5 DnD initiates from a chat anchor. Test from console:
+- [x] **dragstart not preempted by claude.ai's React handler.** Verified inline by `drag-handlers.js`'s `runDragPreemptionTest`: dispatches a synthesized DragEvent against the first chat anchor on first sweep and logs a console warn if `defaultPrevented === true` or our probe listener doesn't fire. Boots cleanly on real claude.ai. If a future claude.ai update breaks the path, the warn surfaces and we know to inject visible drag handles. Re-verify from console:
 
   ```js
   const a = document.querySelector('a[href^="/chat/"][data-dd-action-name="sidebar-chat-item"]');
@@ -247,14 +249,14 @@ These are the recon items that v0.2 implementation commits depend on. Each is ve
 
   If `defaultPrevented === true`, claude.ai is blocking native drag and v0.2 commit 6 needs an alternative drag mechanism (custom drag handle, long-press detection, modifier-key drag). Required by v0.2 commit 6 (drag-and-drop coordination).
 
-- [ ] **Overlay viability.** Verify that a `position: fixed` element rendered over `<nav>` does not cause:
+- [ ] **Overlay viability.** Strip and panel are both `position: fixed` overlays appended to `<body>`. Strip is anchored to viewport left edge (`left: 0`) so it's independent of nav size. Panel is anchored over `<nav>`'s rect via `getBoundingClientRect()` with ResizeObserver updates. Manual verification when commits 4 and 5 run in real claude.ai - check for:
   - Layout shift in claude.ai's content
   - Clicks passing through to nav elements underneath
   - Scroll trapping (sidebar scroll should still work when overlay is dismissed)
 
   Quick test: inject a styled `<div style="position:fixed;top:80px;left:0;width:260px;height:300px;background:rgba(255,0,0,0.3);z-index:9999"></div>` via DevTools, observe behavior. Required by v0.2 commits 4 and 5.
 
-- [ ] **Off-screen anchor reachability.** Verify what happens when a chat scrolls out of `<nav>`'s visible window. Does claude.ai unmount the anchor (virtualized list), or just scroll it (full DOM)? Test by scrolling the sidebar and checking `document.querySelectorAll('a[href^="/chat/"]').length` against expected count. If virtualized, synthetic `.click()` only works for currently-mounted anchors; v0.2 commit 5's chat-row click handler needs `location.href` fallback for unmounted chats.
+- [ ] **Off-screen anchor reachability.** `folder-panel.js`'s `navigateToItem` already handles both cases: it tries `existing.click()` if the anchor is in DOM, falls back to `window.location.href = '/<type>/<uuid>'` otherwise. Either path is correct; the fallback path triggers a full reload but the chat still loads. Manual verification: scroll the sidebar far enough that older chats unmount, click one of those chats from the panel - confirm it navigates (whether SPA or full reload).
 
 ## All chats page (v0.2 reference, not implemented in v0.1)
 
