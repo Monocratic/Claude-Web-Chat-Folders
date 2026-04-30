@@ -1,5 +1,6 @@
 import * as S from '../lib/storage.js';
 import { SELECTORS, extractChatUuid } from '../lib/selectors.js';
+import { resolveTheme, applyTheme } from '../lib/themes.js';
 
 const SWEEP_DEBOUNCE_MS = 150;
 const TITLE_REFRESH_MIN_INTERVAL_MS = 30_000;
@@ -35,6 +36,8 @@ export async function start() {
     console.warn('[CWCF] chat anchors not found - claude.ai chat URL pattern may have changed');
   }
 
+  applyActiveTheme();
+
   await loadModulesForViewMode(state.loaded.settings.viewMode);
   attachObserver();
   runSweep();
@@ -61,16 +64,27 @@ export async function start() {
 
 async function handleStorageChange(newValue) {
   const previousViewMode = state.loaded?.settings?.viewMode;
+  const previousTheme = state.loaded?.settings?.activeTheme;
   if (!newValue) {
     state.loaded = await S.loadState();
   } else {
     state.loaded = newValue;
   }
   const newViewMode = state.loaded?.settings?.viewMode;
+  const newTheme = state.loaded?.settings?.activeTheme;
+  if (previousTheme !== newTheme) {
+    applyActiveTheme();
+  }
   if (previousViewMode !== newViewMode) {
     await loadModulesForViewMode(newViewMode);
   }
   rerenderActiveModule();
+}
+
+function applyActiveTheme() {
+  const settings = state.loaded?.settings || {};
+  const tokens = resolveTheme(settings.activeTheme || 'neon-purple', settings.customTheme || {});
+  applyTheme(tokens, document.documentElement);
 }
 
 async function loadModulesForViewMode(viewMode) {
