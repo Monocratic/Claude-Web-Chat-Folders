@@ -6,15 +6,35 @@ let dragSrcId = null;
 
 export function renderFolderList() {
   if (!state.loaded) return;
-  const all = [...state.loaded.folders].sort((a, b) => a.sortOrder - b.sortOrder);
+  const all = [...state.loaded.folders];
   const filtered = filterFolders(all, state.searchQuery);
-  const pinned = filtered.filter(f => f.pinned);
-  const unpinned = filtered.filter(f => !f.pinned);
 
+  // Pinned section is flat (no nesting); Pinned folders show by themselves
+  // at the top regardless of parentId.
+  const pinned = filtered.filter(f => f.pinned).sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // Main section uses nested rendering driven by parentId. When a search
+  // filter is active, render flat to make matches obvious; tree state is
+  // restored when the query is cleared.
   const pinnedList = $('folder-list-pinned');
   const allList = $('folder-list-all');
-  pinnedList.replaceChildren(...pinned.map(buildFolderRow));
-  allList.replaceChildren(...unpinned.map(buildFolderRow));
+  pinnedList.replaceChildren(...pinned.map(f => buildFolderRow(f, 0)));
+
+  if (state.searchQuery) {
+    const flatRows = filtered
+      .filter(f => !f.pinned)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(f => buildFolderRow(f, 0));
+    allList.replaceChildren(...flatRows);
+  } else {
+    const childrenByParent = groupByParent(filtered.filter(f => !f.pinned));
+    const roots = (childrenByParent.get(null) || []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
+    const rendered = [];
+    for (const root of roots) {
+      renderFolderTree(root, 0, childrenByParent, rendered);
+    }
+    allList.replaceChildren(...rendered);
+  }
 
   $('section-pinned').hidden = pinned.length === 0;
 
@@ -27,6 +47,26 @@ export function renderFolderList() {
   $('section-all-heading').textContent = state.searchQuery
     ? `Matches (${filtered.length})`
     : 'All folders';
+}
+
+function groupByParent(folders) {
+  const map = new Map();
+  for (const f of folders) {
+    const parent = f.parentId ?? null;
+    if (!map.has(parent)) map.set(parent, []);
+    map.get(parent).push(f);
+  }
+  return map;
+}
+
+function renderFolderTree(folder, depth, childrenByParent, out) {
+  const row = buildFolderRow(folder, depth);
+  out.push(row);
+  if (folder.collapsed) return;
+  const children = (childrenByParent.get(folder.id) || []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
+  for (const child of children) {
+    renderFolderTree(child, depth + 1, childrenByParent, out);
+  }
 }
 
 function filterFolders(folders, query) {
@@ -43,7 +83,7 @@ function filterFolders(folders, query) {
   });
 }
 
-function buildFolderRow(folder) {
+function buildFolderRow(folder, depth = 0) {
   const li = document.createElement('li');
   li.className = 'folder-row';
   li.dataset.folderId = folder.id;
@@ -51,6 +91,34 @@ function buildFolderRow(folder) {
   li.tabIndex = 0;
   li.setAttribute('role', 'button');
   li.setAttribute('aria-label', `Open folder ${folder.name}`);
+  if (depth > 0) {
+    li.classList.add('folder-row--nested');
+    li.style.paddingLeft = `${12 + depth * 14}px`;
+  }
+
+  const hasChildren = (state.loaded.folders || []).some(f => f.parentId === folder.id);
+  if (hasChildren && !state.searchQuery && !folder.pinned) {
+    const arrow = document.createElement('button');
+    arrow.type = 'button';
+    arrow.className = 'folder-row__arrow';
+    arrow.textContent = folder.collapsed ? '▸' : '▾';
+    arrow.title = folder.collapsed ? 'Expand' : 'Collapse';
+    arrow.setAttribute('aria-label', folder.collapsed ? 'Expand folder' : 'Collapse folder');
+    arrow.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        const fresh = await S.loadState();
+        const target = fresh.folders.find(f => f.id === folder.id);
+        if (!target) return;
+        target.collapsed = !target.collapsed;
+        await chrome.storage.local.set({ cwcf_data: fresh });
+      } catch (err) {
+        showToast(`Toggle failed: ${err.message}`, 'error');
+      }
+    });
+    li.appendChild(arrow);
+  }
 
   const swatch = document.createElement('span');
   swatch.className = 'folder-swatch';
