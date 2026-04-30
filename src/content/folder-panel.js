@@ -96,10 +96,10 @@ function buildPanelDom() {
   const createBtn = document.createElement('button');
   createBtn.type = 'button';
   createBtn.className = 'cwcf-panel__icon-btn';
-  createBtn.title = 'Open popup to create folder';
-  createBtn.setAttribute('aria-label', 'Open popup to create folder');
+  createBtn.title = 'Create folder';
+  createBtn.setAttribute('aria-label', 'Create folder');
   createBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
-  createBtn.addEventListener('click', openPopup);
+  createBtn.addEventListener('click', handleCreateFolder);
   headerBtns.appendChild(createBtn);
 
   const settingsBtn = document.createElement('button');
@@ -695,13 +695,15 @@ function dismissSuggestion(itemRef, currentParentFolderId) {
   if (mainState) render(mainState);
 }
 
-function openPopup() {
-  const url = chrome.runtime.getURL('src/popup/popup.html');
-  if (chrome.action && chrome.action.openPopup) {
-    chrome.action.openPopup().catch(() => {
-      window.open(url, '_blank', 'noopener');
-    });
-  } else {
-    window.open(url, '_blank', 'noopener');
+async function handleCreateFolder() {
+  const raw = window.prompt('Folder name:');
+  if (raw === null) return;
+  const name = raw.trim();
+  if (!name) return;
+  try {
+    await S.createFolder(name);
+  } catch (err) {
+    console.error('[CWCF] createFolder failed', err);
+    window.alert(`Could not create folder: ${err.message || err}`);
   }
 }

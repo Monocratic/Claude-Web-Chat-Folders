@@ -121,17 +121,24 @@ async function handleMenuClick(info, tab) {
   }
 }
 
-// Tries chrome.action.openPopup first (works in some Chromium browsers when
-// invoked from a user gesture). Falls back to opening popup.html in a new tab.
+// Asks the active claude.ai content script to open the in-page settings
+// overlay. Replaces the previous popup.html new-tab fallback, which Brave
+// Shields blocks (ERR_BLOCKED_BY_CLIENT). If no active claude.ai tab is
+// available, opens claude.ai itself; the user can then open settings from
+// the in-page strip or panel.
 async function openManagementSurface() {
-  if (chrome.action && chrome.action.openPopup) {
-    try {
-      await chrome.action.openPopup();
+  try {
+    const tabs = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+      url: 'https://claude.ai/*'
+    });
+    if (tabs[0]?.id) {
+      await chrome.tabs.sendMessage(tabs[0].id, { type: 'cwcf:openSettingsOverlay' });
       return;
-    } catch {
-      // fall through
     }
+  } catch (err) {
+    console.warn('[CWCF] openManagementSurface dispatch failed', err);
   }
-  const url = chrome.runtime.getURL('src/popup/popup.html');
-  chrome.tabs.create({ url });
+  chrome.tabs.create({ url: 'https://claude.ai/' });
 }

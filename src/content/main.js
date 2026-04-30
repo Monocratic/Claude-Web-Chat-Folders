@@ -39,6 +39,19 @@ export async function start() {
 
   state.unsubscribe = S.subscribeToChanges(handleStorageChange);
 
+  // Background service worker dispatches cwcf:openSettingsOverlay when the
+  // user clicks "Manage folders…" in the right-click context menu. The
+  // listener calls getApi() inside the callback so the api object is fresh
+  // each time, not captured at registration.
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type === 'cwcf:openSettingsOverlay') {
+      const apiRef = getApi();
+      apiRef.openSettingsOverlay();
+      sendResponse({ ok: true });
+    }
+    return false;
+  });
+
   window.addEventListener('pageshow', (e) => {
     if (e.persisted) runSweep();
   });
