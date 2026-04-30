@@ -18,7 +18,8 @@ const state = {
     drag: null,
     settings: null,
     folderModal: null,
-    sync: null
+    sync: null,
+    chatContext: null
   },
   titleCacheLastWrite: new Map()
 };
@@ -37,6 +38,7 @@ export async function start() {
   }
 
   applyActiveTheme();
+  await attachChatContextMenu();
 
   await loadModulesForViewMode(state.loaded.settings.viewMode);
   attachObserver();
@@ -78,6 +80,9 @@ async function handleStorageChange(newValue) {
   if (previousViewMode !== newViewMode) {
     await loadModulesForViewMode(newViewMode);
   }
+  if (state.modules.chatContext && state.modules.chatContext.setState) {
+    state.modules.chatContext.setState(state);
+  }
   rerenderActiveModule();
 }
 
@@ -85,6 +90,18 @@ function applyActiveTheme() {
   const settings = state.loaded?.settings || {};
   const tokens = resolveTheme(settings.activeTheme || 'neon-purple', settings.customTheme || {});
   applyTheme(tokens, document.documentElement);
+}
+
+async function attachChatContextMenu() {
+  try {
+    if (!state.modules.chatContext) {
+      const url = chrome.runtime.getURL('src/content/chat-context.js');
+      state.modules.chatContext = await import(url);
+    }
+    state.modules.chatContext.attach(state, getApi());
+  } catch (err) {
+    console.error('[CWCF] failed to attach chat context menu', err);
+  }
 }
 
 async function loadModulesForViewMode(viewMode) {

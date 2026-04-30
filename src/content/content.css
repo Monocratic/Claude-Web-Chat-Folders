@@ -1095,3 +1095,25 @@
   background: color-mix(in srgb, var(--accent-primary, #A78BFA) 20%, transparent);
 }
 
+.cwcf-fmenu__group-label {
+  padding: 6px 10px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary, #9A8FB5);
+}
+
+.cwcf-fmenu--chat {
+  max-height: 400px;
+  overflow-y: auto;
+  min-width: 220px;
+}
+
+.cwcf-fmenu--chat::-webkit-scrollbar { width: 6px; }
+.cwcf-fmenu--chat::-webkit-scrollbar-track { background: transparent; }
+.cwcf-fmenu--chat::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent-primary, #A78BFA) 30%, transparent);
+  border-radius: 3px;
+}
+
