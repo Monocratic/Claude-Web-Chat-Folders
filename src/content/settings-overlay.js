@@ -1,4 +1,5 @@
 import * as S from '../lib/storage.js';
+import { listPresets } from '../lib/themes.js';
 
 let overlayEl = null;
 let backdropEl = null;
@@ -10,6 +11,10 @@ let pendingFile = null;
 let promptResolver = null;
 
 const APP_VERSION_BYTES_LIMIT = 10 * 1024 * 1024;
+const COLOR_PRESETS = [
+  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6b7280'
+];
 
 export function mount(state, apiHandle) {
   mainState = state;
@@ -93,6 +98,7 @@ function buildDom() {
   const body = document.createElement('div');
   body.className = 'cwcf-settings__body';
 
+  body.appendChild(buildAppearanceSection());
   body.appendChild(buildViewSection());
   body.appendChild(buildAutoOrganizeSection());
   body.appendChild(buildFoldersSection());
@@ -100,6 +106,57 @@ function buildDom() {
   body.appendChild(buildDataSection());
 
   overlayEl.appendChild(body);
+}
+
+function buildAppearanceSection() {
+  const section = sectionEl('Appearance');
+  const themeOptions = listPresets().map(p => ({ value: p.id, label: p.label }));
+  section.appendChild(rowSelect('Theme', 'cwcf-set-theme', themeOptions,
+    (value) => apply({ activeTheme: value })));
+
+  section.appendChild(rowSelect('Density', 'cwcf-set-density', [
+    { value: 'comfortable', label: 'Comfortable' },
+    { value: 'compact', label: 'Compact' }
+  ], (value) => apply({ density: value })));
+
+  section.appendChild(rowCheckbox('Reduce motion', 'cwcf-set-reduce-motion',
+    (checked) => apply({ reduceMotion: checked })));
+
+  section.appendChild(buildColorPickerRow('Default folder color', 'cwcf-set-default-color',
+    (value) => apply({ defaultFolderColor: value })));
+
+  return section;
+}
+
+function buildColorPickerRow(label, id, onChange) {
+  const row = document.createElement('div');
+  row.className = 'cwcf-settings__row';
+  const span = document.createElement('span');
+  span.className = 'cwcf-settings__label';
+  span.textContent = label;
+  row.appendChild(span);
+
+  const grid = document.createElement('div');
+  grid.id = id;
+  grid.className = 'cwcf-settings__color-grid';
+  for (const color of COLOR_PRESETS) {
+    const sw = document.createElement('button');
+    sw.type = 'button';
+    sw.className = 'cwcf-settings__swatch';
+    sw.style.background = color;
+    sw.dataset.color = color;
+    sw.title = color;
+    sw.setAttribute('aria-label', `Set default folder color to ${color}`);
+    sw.addEventListener('click', () => {
+      grid.querySelectorAll('.cwcf-settings__swatch--selected').forEach(el =>
+        el.classList.remove('cwcf-settings__swatch--selected'));
+      sw.classList.add('cwcf-settings__swatch--selected');
+      onChange(color);
+    });
+    grid.appendChild(sw);
+  }
+  row.appendChild(grid);
+  return row;
 }
 
 function buildViewSection() {
@@ -144,11 +201,19 @@ function buildBehaviorSection() {
   const section = sectionEl('Behavior');
   section.appendChild(rowCheckbox('Confirm before deleting folders', 'cwcf-set-confirm-delete',
     (checked) => apply({ confirmFolderDelete: checked })));
+  section.appendChild(rowCheckbox('Search bar enabled in panel', 'cwcf-set-search-enabled',
+    (checked) => apply({ searchEnabled: checked })));
   return section;
 }
 
 function buildDataSection() {
   const section = sectionEl('Data');
+
+  section.appendChild(rowSelect('Auto backup', 'cwcf-set-auto-backup', [
+    { value: 'off', label: 'Off' },
+    { value: 'daily', label: 'Daily' },
+    { value: 'weekly', label: 'Weekly' }
+  ], (value) => apply({ autoBackup: value })));
 
   const dataRow = document.createElement('div');
   dataRow.className = 'cwcf-settings__row cwcf-settings__row--buttons';
@@ -266,16 +331,31 @@ function populate() {
   suppressEvents = true;
   const s = mainState.loaded.settings;
 
+  setVal('cwcf-set-theme', s.activeTheme || 'neon-purple');
+  setVal('cwcf-set-density', s.density || 'comfortable');
+  setChecked('cwcf-set-reduce-motion', !!s.reduceMotion);
+  setSwatchSelected('cwcf-set-default-color', s.defaultFolderColor || '#3b82f6');
   setVal('cwcf-set-view-mode', s.viewMode || 'default');
   setVal('cwcf-set-strip-cap', String(s.stripCap ?? 6));
   setVal('cwcf-set-strip-overflow', s.stripOverflowBehavior || 'indicator');
   setVal('cwcf-set-match-mode', s.autoOrganizeMatchMode || 'contains');
   setChecked('cwcf-set-show-counts', !!s.showChatCounts);
   setChecked('cwcf-set-confirm-delete', !!s.confirmFolderDelete);
+  setChecked('cwcf-set-search-enabled', !!s.searchEnabled);
+  setVal('cwcf-set-auto-backup', s.autoBackup || 'off');
 
   populateQuickAssignFolders(s.quickAssignFolderId || '');
 
   suppressEvents = false;
+}
+
+function setSwatchSelected(gridId, color) {
+  const grid = overlayEl?.querySelector(`#${gridId}`);
+  if (!grid) return;
+  grid.querySelectorAll('.cwcf-settings__swatch--selected').forEach(el =>
+    el.classList.remove('cwcf-settings__swatch--selected'));
+  const target = grid.querySelector(`[data-color="${color}"]`);
+  if (target) target.classList.add('cwcf-settings__swatch--selected');
 }
 
 function populateQuickAssignFolders(currentValue) {

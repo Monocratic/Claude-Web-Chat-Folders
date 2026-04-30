@@ -685,6 +685,33 @@
   cursor: pointer;
 }
 
+.cwcf-settings__color-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 168px;
+  justify-content: flex-end;
+}
+
+.cwcf-settings__swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 100ms ease, border-color 100ms ease;
+}
+
+.cwcf-settings__swatch:hover {
+  transform: scale(1.1);
+}
+
+.cwcf-settings__swatch--selected {
+  border-color: #E5E0F0;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.6);
+}
+
 .cwcf-settings__btn {
   background: rgba(167, 139, 250, 0.12);
   color: #E5E0F0;
