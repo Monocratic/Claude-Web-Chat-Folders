@@ -13,10 +13,6 @@ export function populateSettingsControls() {
 
   const s = state.loaded.settings;
   $('setting-default-color').value = s.defaultFolderColor;
-  $('setting-show-inject').checked = s.showInjectButtons;
-  $('setting-inject-style').value = s.injectButtonStyle;
-  $('setting-inject-position').value = s.injectButtonPosition;
-  $('setting-show-dots').checked = s.showFolderDots;
   $('setting-show-counts').checked = s.showChatCounts;
   $('setting-confirm-delete').checked = s.confirmFolderDelete;
   $('setting-theme').value = s.activeTheme;
@@ -83,18 +79,6 @@ export function wireSettingsEvents() {
   });
   $('setting-default-color').addEventListener('change', (e) => {
     applySettingChange({ defaultFolderColor: e.target.value });
-  });
-  $('setting-show-inject').addEventListener('change', (e) => {
-    applySettingChange({ showInjectButtons: e.target.checked });
-  });
-  $('setting-inject-style').addEventListener('change', (e) => {
-    applySettingChange({ injectButtonStyle: e.target.value });
-  });
-  $('setting-inject-position').addEventListener('change', (e) => {
-    applySettingChange({ injectButtonPosition: e.target.value });
-  });
-  $('setting-show-dots').addEventListener('change', (e) => {
-    applySettingChange({ showFolderDots: e.target.checked });
   });
   $('setting-show-counts').addEventListener('change', (e) => {
     applySettingChange({ showChatCounts: e.target.checked });
