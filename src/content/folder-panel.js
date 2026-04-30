@@ -226,16 +226,21 @@ async function toggleUnsortedCollapse() {
 }
 
 function collectUnsortedItems(assignments) {
-  const all = collectAllChatRefsFromSidebar();
+  const all = collectAllChatRefs();
   const assigned = new Set(Object.keys(assignments).filter(k => (assignments[k] || []).length > 0));
   const unsorted = all.filter(ref => !assigned.has(ref));
   return filterByQuery(unsorted, null);
 }
 
-function collectAllChatRefsFromSidebar() {
-  const anchors = document.querySelectorAll(SELECTORS.chatAnchorFallback);
+// Union sidebar-rendered chat anchors with chatCache from the last /recents
+// sync. The sidebar only renders ~47 chats at a time; chatCache extends
+// coverage to anything captured by the sync button. Dedupe by UUID, sidebar
+// entries take precedence (they are guaranteed live; cache may be stale).
+function collectAllChatRefs() {
   const seen = new Set();
   const out = [];
+
+  const anchors = document.querySelectorAll(SELECTORS.chatAnchorFallback);
   for (const a of anchors) {
     const uuid = extractChatUuid(a.getAttribute('href'));
     if (!uuid) continue;
@@ -244,6 +249,15 @@ function collectAllChatRefsFromSidebar() {
     seen.add(ref);
     out.push(ref);
   }
+
+  const cache = mainState?.loaded?.chatCache?.chats || {};
+  for (const uuid of Object.keys(cache)) {
+    const ref = `chat:${uuid}`;
+    if (seen.has(ref)) continue;
+    seen.add(ref);
+    out.push(ref);
+  }
+
   return out;
 }
 
@@ -345,7 +359,10 @@ function buildItemRow(itemRef, itemTitles, parentFolderId, depth = 1) {
 
   const parsed = itemRef.split(':');
   const uuid = parsed[1];
-  const cachedTitle = itemTitles[itemRef] || `chat ${uuid.slice(0, 8)}`;
+  const chatCacheEntry = mainState?.loaded?.chatCache?.chats?.[uuid];
+  const cachedTitle = itemTitles[itemRef]
+    || chatCacheEntry?.title
+    || `chat ${uuid.slice(0, 8)}`;
 
   const row = document.createElement('div');
   row.className = 'cwcf-panel__item-row';
@@ -481,10 +498,16 @@ function folderSortCompare(a, b) {
 function filterByQuery(items, itemTitles) {
   if (!searchQuery) return items;
   const titles = itemTitles || (mainState?.loaded?.itemTitles || {});
+  const cache = mainState?.loaded?.chatCache?.chats || {};
   const folders = mainState?.loaded?.folders || [];
   return items.filter(ref => {
     const title = (titles[ref] || '').toLowerCase();
     if (title.includes(searchQuery)) return true;
+    const [kind, uuid] = ref.split(':');
+    if (kind === 'chat' && uuid && cache[uuid]) {
+      const cTitle = (cache[uuid].title || '').toLowerCase();
+      if (cTitle.includes(searchQuery)) return true;
+    }
     // Item ref itself can match (e.g., partial UUID)
     if (ref.toLowerCase().includes(searchQuery)) return true;
     // Match if any folder containing this item has a name match
