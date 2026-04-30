@@ -1,6 +1,13 @@
 import * as S from '../lib/storage.js';
 import { SELECTORS, extractChatUuid } from '../lib/selectors.js';
 
+// v0.2.1 Phase 1 diagnostic. Flip to false to silence. The
+// per-iteration log inside clickShowMoreUntilDone (already shipped in
+// 54a9a6e) stays regardless; these entry/exit logs cover everything
+// upstream of the loop so we can locate where execution dies.
+const DEBUG = true;
+const log = (...args) => { if (DEBUG) console.log('[CWCF sync]', ...args); };
+
 let inFlight = null;
 const listeners = new Set();
 
@@ -24,12 +31,14 @@ function emit(event) {
 }
 
 export async function runSync() {
+  log('runSync entered', { inFlight: !!inFlight });
   if (inFlight) return inFlight;
   inFlight = doSync().finally(() => { inFlight = null; });
   return inFlight;
 }
 
 async function doSync() {
+  log('doSync entered, creating iframe to /recents');
   emit({ phase: 'starting', count: 0 });
   const iframe = document.createElement('iframe');
   iframe.src = '/recents';
@@ -45,20 +54,31 @@ async function doSync() {
 
   try {
     await waitForIframeReady(iframe);
+    log('iframe ready, contentDocument accessible');
     emit({ phase: 'loading', count: 0 });
     const initialCount = await waitForInitialCells(iframe);
+    log('waitForInitialCells returned', {
+      initialCount,
+      narrow: countCellsNarrow(iframe.contentDocument),
+      broad: countCellsBroad(iframe.contentDocument)
+    });
     emit({ phase: 'expanding', count: initialCount });
+    log('about to enter clickShowMoreUntilDone');
     const finalCount = await clickShowMoreUntilDone(iframe);
+    log('clickShowMoreUntilDone returned', { finalCount });
     emit({ phase: 'settling', count: finalCount });
     const cells = collectCells(iframe.contentDocument);
     const chats = cellsToChats(cells);
+    log('extraction complete', { rawCells: cells.length, dedupedChats: chats.length });
     if (chats.length === 0) {
       throw new Error('No chats found on /recents - claude.ai may have blocked iframe embedding or the selector drifted.');
     }
     const result = await S.setCachedChats(chats);
+    log('setCachedChats wrote', { count: chats.length, lastSyncedAt: result.lastSyncedAt });
     emit({ phase: 'done', count: chats.length });
     return { count: chats.length, lastSyncedAt: result.lastSyncedAt };
   } catch (err) {
+    log('doSync caught error', { message: err.message || String(err) });
     emit({ phase: 'error', count: 0, message: err.message || String(err) });
     throw err;
   } finally {
@@ -100,11 +120,23 @@ async function clickShowMoreUntilDone(iframe) {
   const win = iframe.contentWindow;
   let clicks = 0;
   let lastCount = countCellsForGrowth(doc);
+  log('clickShowMoreUntilDone entered', {
+    startNarrow: countCellsNarrow(doc),
+    startBroad: countCellsBroad(doc),
+    lastCount,
+    showMoreFound: !!findShowMoreButton(doc),
+    totalButtons: doc.querySelectorAll('button').length,
+    sampleButtonTexts: [...doc.querySelectorAll('button')].slice(0, 8)
+      .map(b => (b.textContent || '').trim()).filter(Boolean)
+  });
   emit({ phase: 'expanding', count: lastCount });
 
   while (clicks < SHOW_MORE_MAX_CLICKS) {
     const btn = findShowMoreButton(doc);
-    if (!btn) break;
+    if (!btn) {
+      log('loop exited: findShowMoreButton returned null', { iterationsCompleted: clicks });
+      break;
+    }
 
     const beforeNarrow = countCellsNarrow(doc);
     const beforeBroad = countCellsBroad(doc);

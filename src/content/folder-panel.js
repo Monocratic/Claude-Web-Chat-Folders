@@ -791,8 +791,12 @@ let syncStatusHideTimer = null;
 let syncUnsubscribe = null;
 
 async function handleSyncClick(btn) {
+  console.log('[CWCF panel] handleSyncClick fired', { syncInFlight, hasApi: !!api, hasRunSync: !!(api && api.runSync) });
   if (syncInFlight) return;
-  if (!api || !api.runSync) return;
+  if (!api || !api.runSync) {
+    console.warn('[CWCF panel] handleSyncClick bailed: api or api.runSync missing');
+    return;
+  }
   syncInFlight = true;
   btn.classList.add('cwcf-panel__icon-btn--busy');
   btn.disabled = true;
@@ -801,11 +805,13 @@ async function handleSyncClick(btn) {
   await ensureSyncSubscription();
 
   try {
+    console.log('[CWCF panel] calling api.runSync()');
     const result = await api.runSync();
+    console.log('[CWCF panel] runSync resolved', result);
     showSyncStatus(`Synced ${result.count} chats`, 'success');
     scheduleSyncStatusHide(3000);
   } catch (err) {
-    console.error('[CWCF] sync failed', err);
+    console.error('[CWCF panel] sync failed', err);
     const reason = err && err.message ? err.message : String(err);
     showSyncStatus(`Sync failed: ${reason}`, 'error');
     scheduleSyncStatusHide(6000);
