@@ -25,26 +25,6 @@ export const URL_PATTERNS = {
   project: /^\/project\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
 };
 
-// Marks an anchor that has had its inject button installed. The observer
-// skips anchors with this attribute. Idempotent re-injection.
-export const SENTINEL_ATTR = 'data-cwcf-injected';
-
-// Marks the inject button itself. Used to filter clicks that bubble through
-// the anchor and to skip our own injected DOM during sweeps.
-export const BUTTON_MARKER_ATTR = 'data-cwcf-button';
-
-// Class names applied to injected DOM. Centralized so content.css and
-// content.js stay in sync.
-export const CSS_CLASSES = {
-  injectButton: 'cwcf-inject-btn',
-  popover: 'cwcf-popover',
-  popoverArrow: 'cwcf-popover__arrow',
-  popoverList: 'cwcf-popover__list',
-  popoverItem: 'cwcf-popover__item',
-  popoverItemActive: 'is-active',
-  popoverEmpty: 'cwcf-popover__empty'
-};
-
 export function extractChatUuid(href) {
   if (typeof href !== 'string') return null;
   const m = URL_PATTERNS.chat.exec(href);

@@ -13,21 +13,15 @@ const RECENT_COLORS_MAX = 8;
 const RECENT_EMOJIS_MAX = 16;
 
 const VALID_THEME_DENSITY = ['comfortable', 'compact'];
-const VALID_INJECT_BUTTON_STYLE = ['dot', 'icon', 'pill'];
-const VALID_INJECT_BUTTON_POSITION = ['right', 'left', 'hoverOnly'];
 const VALID_AUTO_BACKUP = ['off', 'daily', 'weekly'];
 
 function defaultSettings() {
   return {
-    showInjectButtons: true,
     defaultFolderColor: '#3b82f6',
     activeTheme: 'neon-purple',
     customTheme: {},
     density: 'comfortable',
     reduceMotion: false,
-    injectButtonStyle: 'icon',
-    injectButtonPosition: 'right',
-    showFolderDots: true,
     showChatCounts: true,
     quickAssignFolderId: null,
     autoBackup: 'off',
@@ -381,15 +375,11 @@ export async function updateSettings(partial) {
 
 function validateSettingsPartial(p) {
   const checks = {
-    showInjectButtons: v => typeof v === 'boolean',
     defaultFolderColor: v => typeof v === 'string' && COLOR_RE.test(v),
     activeTheme: v => typeof v === 'string',
     customTheme: v => v && typeof v === 'object' && !Array.isArray(v),
     density: v => VALID_THEME_DENSITY.includes(v),
     reduceMotion: v => typeof v === 'boolean',
-    injectButtonStyle: v => VALID_INJECT_BUTTON_STYLE.includes(v),
-    injectButtonPosition: v => VALID_INJECT_BUTTON_POSITION.includes(v),
-    showFolderDots: v => typeof v === 'boolean',
     showChatCounts: v => typeof v === 'boolean',
     quickAssignFolderId: v => v === null || typeof v === 'string',
     autoBackup: v => VALID_AUTO_BACKUP.includes(v),

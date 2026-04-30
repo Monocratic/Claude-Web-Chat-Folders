@@ -95,23 +95,21 @@ Multi-folder per item is supported. Folders are tags, not directories.
 ### Settings fields
 
 ```
-showInjectButtons: boolean
 defaultFolderColor: "#RRGGBB"
 activeTheme: string                    // preset id
 customTheme: { tokenName: hex, ... }   // overrides applied on top of active preset
 density: "comfortable" | "compact"     // v0.2 UI
 reduceMotion: boolean                  // v0.2 UI; CSS already honors prefers-reduced-motion
-injectButtonStyle: "dot" | "icon" | "pill"
-injectButtonPosition: "right" | "left" | "hoverOnly"
-showFolderDots: boolean                // colored dots on chat rows showing assignments
 showChatCounts: boolean                // count badges on folders in popup
-quickAssignFolderId: string | null     // self-heals if folder no longer exists
+quickAssignFolderId: string | null     // self-heals if folder no longer exists; v0.2 candidate for top-level context menu shortcut
 autoBackup: "off" | "daily" | "weekly" // v0.2 UI; no chrome.downloads permission for v0.1
 confirmFolderDelete: boolean
 recentColors: string[]                 // capped at 8, MRU
 recentEmojis: string[]                 // capped at 16, MRU
 searchEnabled: boolean
 ```
+
+The earlier settings list included `showInjectButtons`, `injectButtonStyle`, `injectButtonPosition`, and `showFolderDots`. Those were removed in the post-pivot cleanup since the inject button surface they governed no longer exists. Pre-release means no installed users had data referencing those keys.
 
 Settings are device-local. They are not exported or imported. Both `replace` and `merge` import modes preserve the importing device's existing settings.
 
@@ -162,7 +160,7 @@ Stubs are functional and visually distinguishable but the exact hex values are p
 
 - `folders` - list with pinned section, search, create button.
 - `folder-detail` - header with edit and delete buttons, item list, empty state.
-- `settings` - theme selector, default color, inject button preferences, quick-assign target, confirm-on-delete, export, import, storage usage.
+- `settings` - theme selector, default color, chat-count toggle, quick-assign target, confirm-on-delete, export, import, storage usage.
 
 Three native `<dialog>` elements for modals: folder edit (shared between create and edit modes), emoji picker, generic confirm/choice. `showChoice(message, choices)` builds buttons dynamically per call so the same dialog serves two-button confirms and three-button choices (used by the import flow).
 

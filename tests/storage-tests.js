@@ -260,9 +260,9 @@ const tests = [
   }],
 
   ['updateSettings merges and validates', async () => {
-    await S.updateSettings({ showInjectButtons: false, density: 'compact' });
+    await S.updateSettings({ confirmFolderDelete: false, density: 'compact' });
     const s = await S.loadState();
-    assertEqual(s.settings.showInjectButtons, false, 'bool merged');
+    assertEqual(s.settings.confirmFolderDelete, false, 'bool merged');
     assertEqual(s.settings.density, 'compact', 'enum merged');
     await assertThrows(() => S.updateSettings({ unknownKey: 1 }), 'Unknown setting', 'unknown key throws');
     await assertThrows(() => S.updateSettings({ density: 'spacious' }), 'Invalid value', 'bad enum throws');
@@ -283,7 +283,7 @@ const tests = [
 
   ['importFromJson replace mode preserves settings', async () => {
     await S.createFolder('Pre-import');
-    await S.updateSettings({ showInjectButtons: false });
+    await S.updateSettings({ confirmFolderDelete: false });
     const exportPayload = {
       exportedBy: 'cwcf',
       exportedAt: new Date().toISOString(),
@@ -301,7 +301,7 @@ const tests = [
     const state = await S.loadState();
     assertEqual(state.folders.length, 1, 'replaced with imported folder');
     assertEqual(state.folders[0].name, 'Imported', 'imported name present');
-    assertEqual(state.settings.showInjectButtons, false, 'settings preserved across replace');
+    assertEqual(state.settings.confirmFolderDelete, false, 'settings preserved across replace');
   }],
 
   ['importFromJson merge mode adds non-conflicting folders', async () => {

@@ -69,7 +69,7 @@
       <ul class="item-list" id="detail-items" role="list"></ul>
       <div class="empty-state" id="detail-empty" hidden>
         <p>No items in this folder yet.</p>
-        <p class="empty-state__hint">Use the inject button on chats in claude.ai to add them.</p>
+        <p class="empty-state__hint">Right-click a chat link in claude.ai's sidebar and choose "Add chat to folder" to assign it.</p>
       </div>
     </main>
 
@@ -96,31 +96,7 @@
       </section>
 
       <section class="settings-group">
-        <h3>Inject button on claude.ai</h3>
-        <label class="settings-row settings-row--toggle">
-          <span class="settings-row__label">Show inject buttons</span>
-          <input type="checkbox" id="setting-show-inject">
-        </label>
-        <label class="settings-row">
-          <span class="settings-row__label">Style</span>
-          <select id="setting-inject-style">
-            <option value="dot">Dot</option>
-            <option value="icon">Icon</option>
-            <option value="pill">Pill with name</option>
-          </select>
-        </label>
-        <label class="settings-row">
-          <span class="settings-row__label">Position</span>
-          <select id="setting-inject-position">
-            <option value="right">Right</option>
-            <option value="left">Left</option>
-            <option value="hoverOnly">On hover only</option>
-          </select>
-        </label>
-        <label class="settings-row settings-row--toggle">
-          <span class="settings-row__label">Show folder dots on chat rows</span>
-          <input type="checkbox" id="setting-show-dots">
-        </label>
+        <h3>Folders</h3>
         <label class="settings-row settings-row--toggle">
           <span class="settings-row__label">Show chat counts on folders</span>
           <input type="checkbox" id="setting-show-counts">
