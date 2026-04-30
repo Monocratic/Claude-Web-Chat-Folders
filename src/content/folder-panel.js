@@ -302,6 +302,11 @@ function buildFolderNode(folder, depth, childrenByParent, assignments, itemTitle
   row.draggable = true;
   attachFolderDragSource(row, folder.id);
   attachFolderDropTarget(row, folder.id);
+  row.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showFolderContextMenu(folder, e.clientX, e.clientY);
+  });
   node.appendChild(row);
 
   if (!collapsed) {
@@ -720,5 +725,109 @@ function dismissSuggestion(itemRef, currentParentFolderId) {
 function handleCreateFolder() {
   if (api && api.openFolderModal) {
     api.openFolderModal({ mode: 'create' });
+  }
+}
+
+let activeFolderMenu = null;
+
+function showFolderContextMenu(folder, clientX, clientY) {
+  closeFolderContextMenu();
+
+  const menu = document.createElement('div');
+  menu.className = 'cwcf-fmenu';
+  menu.setAttribute('role', 'menu');
+
+  const items = [
+    {
+      label: 'Edit folder…',
+      onClick: () => {
+        if (api && api.openFolderModal) {
+          api.openFolderModal({ mode: 'edit', folderId: folder.id });
+        }
+      }
+    },
+    {
+      label: folder.pinned ? 'Unpin' : 'Pin',
+      onClick: async () => {
+        try {
+          await S.togglePin(folder.id);
+        } catch (err) {
+          console.error('[CWCF] toggle pin failed', err);
+        }
+      }
+    },
+    {
+      label: 'Add child folder…',
+      onClick: () => {
+        if (api && api.openFolderModal) {
+          api.openFolderModal({ mode: 'create', parentId: folder.id });
+        }
+      }
+    },
+    { kind: 'sep' },
+    {
+      label: 'Delete folder',
+      destructive: true,
+      onClick: async () => {
+        const ok = window.confirm(
+          `Delete folder "${folder.name}"? Chats in it become unsorted. Child folders are also deleted.`
+        );
+        if (!ok) return;
+        try {
+          await S.deleteFolder(folder.id);
+        } catch (err) {
+          console.error('[CWCF] deleteFolder failed', err);
+          window.alert(`Delete failed: ${err.message || err}`);
+        }
+      }
+    }
+  ];
+
+  for (const item of items) {
+    if (item.kind === 'sep') {
+      const sep = document.createElement('div');
+      sep.className = 'cwcf-fmenu__sep';
+      menu.appendChild(sep);
+      continue;
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cwcf-fmenu__item';
+    if (item.destructive) btn.classList.add('cwcf-fmenu__item--danger');
+    btn.textContent = item.label;
+    btn.addEventListener('click', () => {
+      closeFolderContextMenu();
+      Promise.resolve().then(item.onClick);
+    });
+    menu.appendChild(btn);
+  }
+
+  // Position offscreen first to measure, then clamp inside viewport.
+  menu.style.left = '0px';
+  menu.style.top = '0px';
+  menu.style.visibility = 'hidden';
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  const maxLeft = Math.max(0, window.innerWidth - rect.width - 4);
+  const maxTop = Math.max(0, window.innerHeight - rect.height - 4);
+  menu.style.left = `${Math.min(clientX, maxLeft)}px`;
+  menu.style.top = `${Math.min(clientY, maxTop)}px`;
+  menu.style.visibility = '';
+  activeFolderMenu = menu;
+
+  const dismiss = (e) => {
+    if (e && e.target && menu.contains(e.target)) return;
+    closeFolderContextMenu();
+  };
+  setTimeout(() => {
+    document.addEventListener('mousedown', dismiss, { once: true });
+    document.addEventListener('contextmenu', dismiss, { once: true });
+  }, 0);
+}
+
+function closeFolderContextMenu() {
+  if (activeFolderMenu) {
+    activeFolderMenu.remove();
+    activeFolderMenu = null;
   }
 }
