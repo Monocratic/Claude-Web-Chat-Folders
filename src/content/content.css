@@ -1,3 +1,161 @@
-/* Styles for v0.2 content script. Populated in commits 4 (folder strip) and
-   5 (folder panel). All selectors are scoped via .cwcf-* prefixes; nothing
-   in this file touches claude.ai's existing classes or elements. */
+/* Styles for v0.2 content script. All selectors scoped via .cwcf-* prefix;
+   nothing in this file touches claude.ai's existing classes or elements.
+
+   Color values are hard-coded to the neon-purple default theme. v0.3 will
+   broadcast the user's active theme tokens for content-script-side
+   theming; for v0.2 the in-page surfaces use brand defaults. */
+
+/* ----- Folder strip (default mode) ----- */
+
+.cwcf-strip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 44px;
+  z-index: 2147483640;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 6px;
+  background: rgba(14, 11, 26, 0.85);
+  border-right: 1px solid rgba(167, 139, 250, 0.18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.cwcf-strip__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(167, 139, 250, 0.15);
+  margin-bottom: 4px;
+}
+
+.cwcf-strip__toggle {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 6px;
+  color: #C4B8DC;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
+}
+
+.cwcf-strip__toggle:hover {
+  background: rgba(167, 139, 250, 0.18);
+  border-color: rgba(167, 139, 250, 0.7);
+  color: #E5E0F0;
+}
+
+.cwcf-strip__toggle:focus-visible {
+  outline: 2px solid #A78BFA;
+  outline-offset: 1px;
+}
+
+.cwcf-strip__list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  overflow: hidden;
+  padding: 0 4px;
+}
+
+.cwcf-strip__list--scroll {
+  overflow-y: auto;
+}
+
+.cwcf-strip__list::-webkit-scrollbar { width: 4px; }
+.cwcf-strip__list::-webkit-scrollbar-track { background: transparent; }
+.cwcf-strip__list::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.3);
+  border-radius: 2px;
+}
+
+.cwcf-strip__folder {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  color: #fff;
+  flex-shrink: 0;
+  transition: transform 100ms ease, border-color 100ms ease, box-shadow 100ms ease;
+}
+
+.cwcf-strip__folder:hover {
+  transform: scale(1.08);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.cwcf-strip__folder--drop-target {
+  outline: 2px dashed #A78BFA;
+  outline-offset: 2px;
+  transform: scale(1.12);
+}
+
+.cwcf-strip__folder:focus-visible {
+  outline: 2px solid #A78BFA;
+  outline-offset: 2px;
+}
+
+.cwcf-strip__icon {
+  pointer-events: none;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.cwcf-strip__overflow {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(167, 139, 250, 0.12);
+  color: #C4B8DC;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 100ms ease;
+}
+
+.cwcf-strip__overflow:hover {
+  background: rgba(167, 139, 250, 0.25);
+  color: #E5E0F0;
+}
+
+.cwcf-strip__overflow-popover {
+  position: fixed;
+  z-index: 2147483645;
+  background: rgba(14, 11, 26, 0.95);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
