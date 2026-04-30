@@ -1,6 +1,11 @@
 import * as S from '../lib/storage.js';
 import { extractChatUuid } from '../lib/selectors.js';
 
+// v0.2.1 Phase 1 diagnostic. Flip to false to silence. Removed in v0.2.1
+// Phase 2 cleanup commit once root cause is fixed.
+const DEBUG = true;
+const log = (...args) => { if (DEBUG) console.log('[CWCF chat-context]', ...args); };
+
 let mainState = null;
 let api = null;
 let activeMenu = null;
@@ -9,9 +14,13 @@ let listenerAttached = false;
 export function attach(state, apiHandle) {
   mainState = state;
   api = apiHandle;
-  if (listenerAttached) return;
+  if (listenerAttached) {
+    log('attach() called but listener already registered, skipping');
+    return;
+  }
   document.addEventListener('contextmenu', onContextMenu, true);
   listenerAttached = true;
+  log('attach() ran, capture-phase contextmenu listener registered on document');
 }
 
 export function setState(state) {
@@ -19,29 +28,43 @@ export function setState(state) {
 }
 
 function onContextMenu(e) {
+  const tEl = e.target;
+  const refEl = tEl.closest && tEl.closest('[data-item-ref^="chat:"]');
+  const anchorEl = tEl.closest && tEl.closest('a[href^="/chat/"]');
+  log('onContextMenu fired', {
+    targetTag: tEl.tagName,
+    targetClass: typeof tEl.className === 'string' ? tEl.className : '(non-string)',
+    closestDataItemRef: refEl ? refEl.getAttribute('data-item-ref') : 'none',
+    closestAnchorHref: anchorEl ? anchorEl.getAttribute('href') : 'none'
+  });
+
   let itemRef = null;
   let href = null;
 
   // Panel chat rows are <div data-item-ref="chat:UUID"> with no anchor in
   // the tree, so anchor-only matching misses them. Try the dataset first;
   // fall back to a chat anchor for sidebar/recents <a> elements.
-  const refEl = e.target.closest('[data-item-ref^="chat:"]');
   if (refEl) {
     itemRef = refEl.getAttribute('data-item-ref');
     const uuid = itemRef.slice('chat:'.length);
     href = `/chat/${uuid}`;
-  } else {
-    const anchor = e.target.closest('a[href^="/chat/"]');
-    if (anchor) {
-      const uuid = extractChatUuid(anchor.getAttribute('href'));
-      if (uuid) {
-        itemRef = `chat:${uuid}`;
-        href = anchor.getAttribute('href');
-      }
+    log('matched via data-item-ref', { itemRef });
+  } else if (anchorEl) {
+    const uuid = extractChatUuid(anchorEl.getAttribute('href'));
+    if (uuid) {
+      itemRef = `chat:${uuid}`;
+      href = anchorEl.getAttribute('href');
+      log('matched via anchor href', { itemRef });
+    } else {
+      log('anchor matched but extractChatUuid returned null', { href: anchorEl.getAttribute('href') });
     }
   }
-  if (!itemRef) return;
+  if (!itemRef) {
+    log('no chat target found, bailing without preventDefault');
+    return;
+  }
 
+  log('about to preventDefault and stopPropagation');
   e.preventDefault();
   e.stopPropagation();
 
@@ -65,6 +88,7 @@ function inferSourceFolderId(targetEl) {
 }
 
 function showChatContextMenu({ itemRef, href, sourceFolderId, clientX, clientY }) {
+  log('showChatContextMenu entered', { itemRef, href, sourceFolderId });
   closeMenu();
 
   const menu = document.createElement('div');
