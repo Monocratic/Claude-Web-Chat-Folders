@@ -417,6 +417,181 @@ const tests = [
     unsub();
     assertTrue(calls >= 1, 'subscriber fired at least once');
     assertTrue(lastNew && Array.isArray(lastNew.folders), 'received state shape');
+  }],
+
+  // ---------- Schema v2 migration ----------
+
+  ['createFolder produces v2 fields by default', async () => {
+    const f = await S.createFolder('Modern');
+    assertEqual(f.parentId, null, 'parentId defaults null');
+    assertEqual(f.collapsed, false, 'collapsed defaults false');
+    assertEqual(f.autoAssignKeywords, [], 'autoAssignKeywords defaults []');
+  }],
+
+  ['default state declares schema version 2', async () => {
+    const s = await S.loadState();
+    assertEqual(s.version, 2, 'version is 2');
+    assertEqual(s.settings.viewMode, 'default', 'viewMode default');
+    assertEqual(s.settings.stripCap, 6, 'stripCap default');
+    assertEqual(s.settings.stripOverflowBehavior, 'indicator', 'overflow default');
+    assertEqual(s.settings.autoOrganizeMatchMode, 'contains', 'matchMode default');
+  }],
+
+  ['v1 state imported as a v1 export migrates to v2 on next load', async () => {
+    // Plant a synthetic v1 export and round-trip it through importFromJson.
+    // After import, loadState should return v2-shaped state.
+    const v1Export = {
+      exportedBy: 'cwcf',
+      exportedAt: new Date().toISOString(),
+      appVersion: '0.1.0',
+      version: 1,
+      folders: [{
+        id: 'f_legacy', name: 'Legacy', color: '#aabbcc',
+        createdAt: 1000, pinned: true, sortOrder: 0,
+        icon: null, description: 'pre-v0.2', lastUsedAt: null
+        // no parentId, collapsed, autoAssignKeywords - v1 didn't have these
+      }],
+      assignments: {},
+      itemTitles: {}
+    };
+    await S.importFromJson(JSON.stringify(v1Export), 'replace');
+    const state = await S.loadState();
+    assertEqual(state.folders.length, 1, 'folder imported');
+    const f = state.folders[0];
+    assertEqual(f.name, 'Legacy', 'original data preserved');
+    assertEqual(f.parentId, null, 'parentId backfilled to null');
+    assertEqual(f.collapsed, false, 'collapsed backfilled to false');
+    assertEqual(f.autoAssignKeywords, [], 'autoAssignKeywords backfilled to []');
+    assertEqual(state.version, 2, 'state migrated to v2');
+  }],
+
+  ['migration is idempotent on already-v2 state', async () => {
+    await S.createFolder('A');
+    const first = await S.loadState();
+    const second = await S.loadState();
+    assertEqual(first.version, 2, 'first read is v2');
+    assertEqual(second.version, 2, 'second read also v2');
+    assertEqual(first.folders[0].id, second.folders[0].id, 'folder identity stable');
+    assertEqual(first.settings.viewMode, second.settings.viewMode, 'settings stable');
+  }],
+
+  // ---------- Settings validation for v2 fields ----------
+
+  ['v2 settings reject invalid values', async () => {
+    await assertThrows(() => S.updateSettings({ viewMode: 'turbo' }), 'Invalid value', 'bad viewMode');
+    await assertThrows(() => S.updateSettings({ stripCap: 0 }), 'Invalid value', 'stripCap below min');
+    await assertThrows(() => S.updateSettings({ stripCap: 51 }), 'Invalid value', 'stripCap above max');
+    await assertThrows(() => S.updateSettings({ stripCap: 3.5 }), 'Invalid value', 'stripCap non-integer');
+    await assertThrows(() => S.updateSettings({ stripOverflowBehavior: 'wrap' }), 'Invalid value', 'bad overflow');
+    await assertThrows(() => S.updateSettings({ autoOrganizeMatchMode: 'fuzzy' }), 'Invalid value', 'bad match mode');
+  }],
+
+  ['v2 settings accept valid values', async () => {
+    await S.updateSettings({ viewMode: 'organize', stripCap: 12, stripOverflowBehavior: 'scroll', autoOrganizeMatchMode: 'exact' });
+    const s = await S.loadState();
+    assertEqual(s.settings.viewMode, 'organize', 'viewMode set');
+    assertEqual(s.settings.stripCap, 12, 'stripCap set');
+    assertEqual(s.settings.stripOverflowBehavior, 'scroll', 'overflow set');
+    assertEqual(s.settings.autoOrganizeMatchMode, 'exact', 'matchMode set');
+  }],
+
+  // ---------- isAncestor cycle detection ----------
+
+  ['isAncestor detects direct parent, transitive ancestor, sibling, unrelated', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    const c = await S.createFolder('C');
+    const d = await S.createFolder('D');
+    await S.moveToParent(b.id, a.id);  // A -> B
+    await S.moveToParent(c.id, b.id);  // A -> B -> C
+    const state = await S.loadState();
+    assertTrue(S.isAncestor(state, a.id, b.id), 'A is ancestor of B (direct)');
+    assertTrue(S.isAncestor(state, a.id, c.id), 'A is ancestor of C (transitive)');
+    assertTrue(!S.isAncestor(state, b.id, a.id), 'B is not ancestor of A (reverse)');
+    assertTrue(!S.isAncestor(state, d.id, c.id), 'D is not ancestor of C (sibling/unrelated)');
+    assertTrue(S.isAncestor(state, a.id, a.id), 'self-ancestor returns true (self-cycle guard)');
+  }],
+
+  // ---------- Recursive folder helpers ----------
+
+  ['getRootFolders returns parentId-null only', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    const c = await S.createFolder('C');
+    await S.moveToParent(b.id, a.id);
+    const state = await S.loadState();
+    const roots = await S.getRootFolders(state);
+    const rootNames = roots.map(f => f.name).sort();
+    assertEqual(rootNames, ['A', 'C'], 'A and C are roots, B is nested');
+  }],
+
+  ['getChildFolders returns direct children only', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    const c = await S.createFolder('C');
+    const d = await S.createFolder('D');
+    await S.moveToParent(b.id, a.id);
+    await S.moveToParent(c.id, a.id);
+    await S.moveToParent(d.id, b.id);
+    const state = await S.loadState();
+    const children = await S.getChildFolders(state, a.id);
+    const childNames = children.map(f => f.name).sort();
+    assertEqual(childNames, ['B', 'C'], 'A has direct children B and C, not D (transitive)');
+  }],
+
+  ['getDescendantFolders returns all descendants recursively', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    const c = await S.createFolder('C');
+    const d = await S.createFolder('D');
+    await S.moveToParent(b.id, a.id);
+    await S.moveToParent(c.id, a.id);
+    await S.moveToParent(d.id, b.id);
+    const state = await S.loadState();
+    const descendants = await S.getDescendantFolders(state, a.id);
+    const names = descendants.map(f => f.name).sort();
+    assertEqual(names, ['B', 'C', 'D'], 'A descendants include B, C, D');
+  }],
+
+  // ---------- moveToParent ----------
+
+  ['moveToParent succeeds for valid root-to-child reparent', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    await S.moveToParent(b.id, a.id);
+    const state = await S.loadState();
+    const moved = state.folders.find(f => f.id === b.id);
+    assertEqual(moved.parentId, a.id, 'B is now child of A');
+  }],
+
+  ['moveToParent accepts null to un-nest', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    await S.moveToParent(b.id, a.id);
+    await S.moveToParent(b.id, null);
+    const state = await S.loadState();
+    const moved = state.folders.find(f => f.id === b.id);
+    assertEqual(moved.parentId, null, 'B is back to root');
+  }],
+
+  ['moveToParent rejects non-existent target parent', async () => {
+    const a = await S.createFolder('A');
+    await assertThrows(() => S.moveToParent(a.id, 'f_doesnt_exist'), 'not found', 'rejects bad parent');
+  }],
+
+  ['moveToParent rejects self-as-parent', async () => {
+    const a = await S.createFolder('A');
+    await assertThrows(() => S.moveToParent(a.id, a.id), 'own parent', 'rejects self-parent');
+  }],
+
+  ['moveToParent rejects cycle (move parent under its own descendant)', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    const c = await S.createFolder('C');
+    await S.moveToParent(b.id, a.id);  // A -> B
+    await S.moveToParent(c.id, b.id);  // A -> B -> C
+    // Now try to move A under C (would create A -> B -> C -> A cycle)
+    await assertThrows(() => S.moveToParent(a.id, c.id), 'cycle', 'rejects descendant-as-parent');
   }]
 ];
 

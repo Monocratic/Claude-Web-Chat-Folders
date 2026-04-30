@@ -1,5 +1,5 @@
 export const STORAGE_KEY = 'cwcf_data';
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 const APP_VERSION = '0.1.0';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -11,9 +11,14 @@ const FOLDER_NAME_MAX = 64;
 const DESCRIPTION_MAX = 280;
 const RECENT_COLORS_MAX = 8;
 const RECENT_EMOJIS_MAX = 16;
+const KEYWORD_MAX = 64;
+const STRIP_CAP_MAX = 50;
 
 const VALID_THEME_DENSITY = ['comfortable', 'compact'];
 const VALID_AUTO_BACKUP = ['off', 'daily', 'weekly'];
+const VALID_VIEW_MODE = ['default', 'organize'];
+const VALID_STRIP_OVERFLOW = ['indicator', 'scroll'];
+const VALID_AUTO_ORGANIZE_MATCH = ['exact', 'contains'];
 
 function defaultSettings() {
   return {
@@ -28,7 +33,11 @@ function defaultSettings() {
     confirmFolderDelete: true,
     recentColors: [],
     recentEmojis: [],
-    searchEnabled: true
+    searchEnabled: true,
+    viewMode: 'default',
+    stripCap: 6,
+    stripOverflowBehavior: 'indicator',
+    autoOrganizeMatchMode: 'contains'
   };
 }
 
@@ -55,9 +64,35 @@ async function writeRaw(state) {
 }
 
 function migrateIfNeeded(state) {
-  if (!state.version || state.version === CURRENT_SCHEMA_VERSION) return state;
-  console.warn(`[CWCF] Loaded state with unknown schema version ${state.version}, using as-is`);
-  return state;
+  if (!state.version) return state;
+  let s = state;
+  if (s.version === 1) s = migrateV1ToV2(s);
+  if (s.version === CURRENT_SCHEMA_VERSION) return s;
+  console.warn(`[CWCF] Loaded state with unknown schema version ${s.version}, using as-is`);
+  return s;
+}
+
+// Adds nested-folder fields, panel collapse state, future-use keyword field,
+// and the four v0.2 settings. Migration is additive and idempotent: running
+// it twice on the same v1 state produces the same v2 state.
+function migrateV1ToV2(state) {
+  return {
+    ...state,
+    version: 2,
+    folders: state.folders.map(f => ({
+      ...f,
+      parentId: f.parentId ?? null,
+      collapsed: f.collapsed ?? false,
+      autoAssignKeywords: f.autoAssignKeywords ?? []
+    })),
+    settings: {
+      ...state.settings,
+      viewMode: state.settings?.viewMode ?? 'default',
+      stripCap: state.settings?.stripCap ?? 6,
+      stripOverflowBehavior: state.settings?.stripOverflowBehavior ?? 'indicator',
+      autoOrganizeMatchMode: state.settings?.autoOrganizeMatchMode ?? 'contains'
+    }
+  };
 }
 
 let writeQueue = Promise.resolve();
@@ -182,7 +217,10 @@ export async function createFolder(name, color = null) {
       sortOrder: maxSortOrder + 1,
       icon: null,
       description: null,
-      lastUsedAt: null
+      lastUsedAt: null,
+      parentId: null,
+      collapsed: false,
+      autoAssignKeywords: []
     };
     state.folders.push(folder);
     if (color !== null) {
@@ -386,13 +424,102 @@ function validateSettingsPartial(p) {
     confirmFolderDelete: v => typeof v === 'boolean',
     recentColors: v => Array.isArray(v) && v.every(c => typeof c === 'string' && COLOR_RE.test(c)),
     recentEmojis: v => Array.isArray(v) && v.every(e => typeof e === 'string'),
-    searchEnabled: v => typeof v === 'boolean'
+    searchEnabled: v => typeof v === 'boolean',
+    viewMode: v => VALID_VIEW_MODE.includes(v),
+    stripCap: v => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= STRIP_CAP_MAX,
+    stripOverflowBehavior: v => VALID_STRIP_OVERFLOW.includes(v),
+    autoOrganizeMatchMode: v => VALID_AUTO_ORGANIZE_MATCH.includes(v)
   };
   for (const [key, value] of Object.entries(p)) {
     const check = checks[key];
     if (!check) throw new Error(`Unknown setting: ${key}`);
     if (!check(value)) throw new Error(`Invalid value for setting ${key}: ${JSON.stringify(value)}`);
   }
+}
+
+// ---------- Nested folder helpers ----------
+
+// Returns true if candidateAncestorId is found in the parentId chain of
+// targetFolderId. Treats targetFolderId itself as its own ancestor (self-cycle
+// detection). Used by moveToParent to reject cycle-creating reparents.
+export function isAncestor(state, candidateAncestorId, targetFolderId) {
+  if (!candidateAncestorId || !targetFolderId) return false;
+  if (candidateAncestorId === targetFolderId) return true;
+  const byId = new Map(state.folders.map(f => [f.id, f]));
+  let current = byId.get(targetFolderId);
+  while (current) {
+    if (current.id === candidateAncestorId) return true;
+    if (current.parentId === null || current.parentId === undefined) return false;
+    current = byId.get(current.parentId);
+  }
+  return false;
+}
+
+export async function getRootFolders(state) {
+  const s = state ?? await readRaw();
+  return s.folders.filter(f => (f.parentId ?? null) === null);
+}
+
+export async function getChildFolders(state, parentId) {
+  const s = state ?? await readRaw();
+  return s.folders.filter(f => (f.parentId ?? null) === parentId);
+}
+
+export async function getDescendantFolders(state, folderId) {
+  const s = state ?? await readRaw();
+  const out = [];
+  const stack = s.folders.filter(f => (f.parentId ?? null) === folderId);
+  while (stack.length > 0) {
+    const f = stack.pop();
+    out.push(f);
+    for (const child of s.folders) {
+      if ((child.parentId ?? null) === f.id) stack.push(child);
+    }
+  }
+  return out;
+}
+
+export async function getAncestorChain(state, folderId) {
+  const s = state ?? await readRaw();
+  const byId = new Map(s.folders.map(f => [f.id, f]));
+  const chain = [];
+  let current = byId.get(folderId);
+  if (!current) return chain;
+  let parent = byId.get(current.parentId ?? null);
+  while (parent) {
+    chain.push(parent);
+    parent = byId.get(parent.parentId ?? null);
+  }
+  return chain;
+}
+
+// Reparents folderId under newParentId (or to root if newParentId is null).
+// Rejects if target parent does not exist, if the move would create a cycle,
+// or if newParentId is a descendant of folderId.
+export async function moveToParent(folderId, newParentId) {
+  if (typeof folderId !== 'string') {
+    throw new Error('folderId must be a string');
+  }
+  if (newParentId !== null && typeof newParentId !== 'string') {
+    throw new Error('newParentId must be a string or null');
+  }
+  return enqueueWrite(async () => {
+    const state = await readRaw();
+    const folder = state.folders.find(f => f.id === folderId);
+    if (!folder) throw new Error(`Folder not found: ${folderId}`);
+    if (newParentId !== null) {
+      const parent = state.folders.find(f => f.id === newParentId);
+      if (!parent) throw new Error(`Target parent folder not found: ${newParentId}`);
+      if (newParentId === folderId) {
+        throw new Error('Folder cannot be its own parent');
+      }
+      if (isAncestor(state, folderId, newParentId)) {
+        throw new Error('Cannot move folder under one of its descendants (would create a cycle)');
+      }
+    }
+    folder.parentId = newParentId;
+    await writeRaw(state);
+  });
 }
 
 // ---------- Export / Import ----------
@@ -471,6 +598,21 @@ export async function importFromJson(jsonString, mode = 'replace') {
 }
 
 function sanitizeImportedFolders(folders) {
+  const out = sanitizeImportedFoldersBuild(folders);
+  // Null any parentId pointing at a folder not present in the import. Prevents
+  // dangling references after sanitize; cycles within the imported set are not
+  // checked here (rare in practice for export-then-import) but moveToParent
+  // would catch them post-import.
+  const validIds = new Set(out.map(f => f.id));
+  for (const f of out) {
+    if (f.parentId !== null && !validIds.has(f.parentId)) {
+      f.parentId = null;
+    }
+  }
+  return out;
+}
+
+function sanitizeImportedFoldersBuild(folders) {
   const out = [];
   for (const raw of folders) {
     if (!raw || typeof raw !== 'object') continue;
@@ -486,6 +628,9 @@ function sanitizeImportedFolders(folders) {
       console.warn(`[CWCF] Folder "${raw.name}" has invalid color, replacing with default`);
       color = defaultSettings().defaultFolderColor;
     }
+    const importedKeywords = Array.isArray(raw.autoAssignKeywords)
+      ? raw.autoAssignKeywords.filter(k => typeof k === 'string' && k.length <= KEYWORD_MAX)
+      : [];
     out.push({
       id: raw.id,
       name: raw.name,
@@ -495,7 +640,10 @@ function sanitizeImportedFolders(folders) {
       sortOrder: typeof raw.sortOrder === 'number' ? raw.sortOrder : out.length,
       icon: isValidImportedIcon(raw.icon) ? raw.icon : null,
       description: raw.description ?? null,
-      lastUsedAt: typeof raw.lastUsedAt === 'number' ? raw.lastUsedAt : null
+      lastUsedAt: typeof raw.lastUsedAt === 'number' ? raw.lastUsedAt : null,
+      parentId: typeof raw.parentId === 'string' ? raw.parentId : null,
+      collapsed: typeof raw.collapsed === 'boolean' ? raw.collapsed : false,
+      autoAssignKeywords: importedKeywords
     });
   }
   return out;

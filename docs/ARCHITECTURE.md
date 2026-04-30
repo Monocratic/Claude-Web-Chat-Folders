@@ -49,11 +49,11 @@ The state has a top-level `version` field. Current value: `1`. Future migrations
 
 On import, an export with `version` greater than the current schema is rejected with a clear error. Exports with the current version pass through. There is no v0 migration code because there are no v0 users.
 
-## Schema (v1)
+## Schema (v2)
 
 ```
 {
-  version: 1,
+  version: 2,
   folders: [
     {
       id: "f_<uuid>",
@@ -64,7 +64,10 @@ On import, an export with `version` greater than the current schema is rejected 
       sortOrder: number,
       icon: string | null,          // single grapheme cluster, must be Extended_Pictographic
       description: string | null,   // up to 280 chars
-      lastUsedAt: number | null     // ms epoch, populated by future v0.2 UI
+      lastUsedAt: number | null,    // ms epoch, populated by future v0.2 UI
+      parentId: string | null,      // v0.2: id of parent folder, or null for root
+      collapsed: boolean,           // v0.2: panel expand/collapse state, default false
+      autoAssignKeywords: string[]  // v0.2: schema-introduced for v0.3 keyword rules; unused in v0.2
     }
   ],
   assignments: {
@@ -77,6 +80,10 @@ On import, an export with `version` greater than the current schema is rejected 
   lastModified: number
 }
 ```
+
+### Migration v1 → v2
+
+v0.2 introduces nested folders via `parentId`, persistent expand/collapse via `collapsed`, and a future-use `autoAssignKeywords` field, plus four new settings (`viewMode`, `stripCap`, `stripOverflowBehavior`, `autoOrganizeMatchMode`). Migration is additive and idempotent: existing folders get `parentId: null` (all root), existing settings get default values for new fields, no data is dropped. `migrateV1ToV2` in `storage.js` handles the walk-forward; running it twice on the same v1 state produces the same v2 state.
 
 ### Typed item refs
 
@@ -107,6 +114,10 @@ confirmFolderDelete: boolean
 recentColors: string[]                 // capped at 8, MRU
 recentEmojis: string[]                 // capped at 16, MRU
 searchEnabled: boolean
+viewMode: "default" | "organize"       // v0.2: which content-script surface is active
+stripCap: number                       // v0.2: integer 1-50, user-preferred max swatches in strip
+stripOverflowBehavior: "indicator" | "scroll"  // v0.2: how strip handles too-many pinned folders
+autoOrganizeMatchMode: "exact" | "contains"    // v0.2: name-match strictness for auto-organize
 ```
 
 The earlier settings list included `showInjectButtons`, `injectButtonStyle`, `injectButtonPosition`, and `showFolderDots`. Those were removed in the post-pivot cleanup since the inject button surface they governed no longer exists. Pre-release means no installed users had data referencing those keys.
