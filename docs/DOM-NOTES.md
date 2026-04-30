@@ -225,11 +225,13 @@ If claude.ai's sidebar is collapsed to a narrow strip or hidden entirely, `nav.r
 
 Both strip and panel anchor their top edge below claude.ai's "More" nav item. The lookup chain in `main.js`'s `api.getTopNavBottomOffset`:
 
-1. Primary: `nav.querySelector('[data-dd-action-name="sidebar-more-item"]')`. Datadog action name is the most stable anchor since claude.ai's analytics depend on it.
+1. Primary: `nav.querySelector('button[aria-label="More"]')`. The aria-label is semantic and stable across designs because it describes what the button is, not how it's analytics-tracked.
 2. Fallback: walk `nav.querySelectorAll('a, button')` looking for an element whose `textContent.trim() === 'More'` and that has fewer than 3 children (avoids matching wrapper elements that contain a "More" descendant).
 3. Final fallback: `nav.getBoundingClientRect().top + 280`, an estimate that approximates the typical top-nav-block height in claude.ai's standard layout.
 
-The fallback chain ensures the panel and strip position somewhere reasonable even if both Datadog and text matches break.
+**Important: do not use `[data-dd-action-name="sidebar-more-item"]` for the top offset.** That Datadog action name is misleadingly assigned by claude.ai to the "All chats" link (`<a href="/recents">`) at the bottom of the chat list, NOT to the "More" expand button at the top. Using it returns a `rect.bottom` near the bottom of the entire nav (off-screen below the viewport on tall sidebars), causing strip and panel to position with their top edge way below visible area. The mistake is easy to make because the Datadog name reads like it should match the "More" button. We hit this in v0.2 testing; the recon diagnostic showed `sidebar-more-item` resolving to `rect.bottom: 1988` while the actual "More" button via `aria-label="More"` resolved to `rect.bottom: 319`. Stay on `aria-label`.
+
+The fallback chain ensures the panel and strip position somewhere reasonable even if both aria-label and text matches break.
 
 ### Unsorted virtual folder scope
 

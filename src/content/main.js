@@ -115,7 +115,16 @@ function attachObserver() {
   if (!state.navEl) {
     setTimeout(() => {
       state.navEl = document.querySelector(SELECTORS.navBlock);
-      if (state.navEl) attachObserver();
+      if (state.navEl) {
+        attachObserver();
+        // Re-fire reposition on any module that mounted before nav existed.
+        // Without this, modules that mounted at document_idle while
+        // claude.ai's React was still rendering nav would have null-nav
+        // reposition calls bail silently and stay at default (broken)
+        // position forever.
+        if (state.modules.strip && state.modules.strip.reposition) state.modules.strip.reposition();
+        if (state.modules.panel && state.modules.panel.reposition) state.modules.panel.reposition();
+      }
     }, 200);
     return;
   }
@@ -189,14 +198,25 @@ function getApi() {
     getTopNavBottomOffset: () => {
       const nav = state.navEl;
       if (!nav) return 0;
-      // Prefer the Datadog-anchored "More" item; fall back to text match;
-      // final fallback is a fixed offset from nav top.
-      const moreEl = nav.querySelector('[data-dd-action-name="sidebar-more-item"]');
-      if (moreEl) return Math.round(moreEl.getBoundingClientRect().bottom);
+      // Primary: button with aria-label="More". This is claude.ai's "More"
+      // expand/collapse button at the top of the nav, sitting above the
+      // chat list area where strip and panel start.
+      //
+      // We deliberately do NOT use [data-dd-action-name="sidebar-more-item"]
+      // here. claude.ai uses that Datadog action name on the "All chats"
+      // link at the BOTTOM of the chat list (href="/recents"), not on the
+      // "More" expand button. That's a misleading internal naming choice
+      // by Anthropic; using it would land our overlay top-edge below the
+      // chat list (off-screen for tall sidebars) instead of below the
+      // top nav block. See docs/DOM-NOTES.md for the full recon note.
+      const moreBtn = nav.querySelector('button[aria-label="More"]');
+      if (moreBtn) return Math.round(moreBtn.getBoundingClientRect().bottom);
+      // Fallback: text-content match, defensive against aria-label drift.
       const textMatch = [...nav.querySelectorAll('a, button')].find(
         el => el.textContent.trim() === 'More' && el.children.length < 3
       );
       if (textMatch) return Math.round(textMatch.getBoundingClientRect().bottom);
+      // Final fallback: estimate based on top of nav.
       return Math.round(nav.getBoundingClientRect().top + 280);
     },
     openPopupAtSettings: async () => {
