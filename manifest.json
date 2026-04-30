@@ -30,6 +30,8 @@
         "src/content/folder-panel.js",
         "src/content/drag-handlers.js",
         "src/content/settings-overlay.js",
+        "src/content/folder-modal.js",
+        "src/lib/emoji-set.js",
         "src/lib/storage.js",
         "src/lib/selectors.js",
         "src/lib/themes.js"

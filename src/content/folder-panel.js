@@ -717,15 +717,8 @@ function dismissSuggestion(itemRef, currentParentFolderId) {
   if (mainState) render(mainState);
 }
 
-async function handleCreateFolder() {
-  const raw = window.prompt('Folder name:');
-  if (raw === null) return;
-  const name = raw.trim();
-  if (!name) return;
-  try {
-    await S.createFolder(name);
-  } catch (err) {
-    console.error('[CWCF] createFolder failed', err);
-    window.alert(`Could not create folder: ${err.message || err}`);
+function handleCreateFolder() {
+  if (api && api.openFolderModal) {
+    api.openFolderModal({ mode: 'create' });
   }
 }

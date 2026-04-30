@@ -15,7 +15,8 @@ const state = {
     strip: null,
     panel: null,
     drag: null,
-    settings: null
+    settings: null,
+    folderModal: null
   },
   titleCacheLastWrite: new Map()
 };
@@ -253,6 +254,19 @@ function getApi() {
         }
       } catch (err) {
         console.error('[CWCF] failed to open settings overlay', err);
+      }
+    },
+    openFolderModal: async (options = {}) => {
+      try {
+        if (!state.modules.folderModal) {
+          const url = chrome.runtime.getURL('src/content/folder-modal.js');
+          state.modules.folderModal = await import(url);
+        }
+        if (state.modules.folderModal && state.modules.folderModal.mount) {
+          state.modules.folderModal.mount({ loaded: state.loaded }, getApi(), options);
+        }
+      } catch (err) {
+        console.error('[CWCF] failed to open folder modal', err);
       }
     },
     runSweep
