@@ -357,3 +357,38 @@ Cached `itemTitle` should be the first line only, split on `\n`.
 - **Separate observer target.** Inject targets on `/projects` are project cards in a grid, not sidebar rows. Different selector chain, different observer target than the chat sidebar.
 - **No in-project inject target yet.** The individual project view at `/project/<uuid>` does not have an obvious place for the inject button. A project-header button or a popup-side "open in folder" affordance would need a separate design pass. Defer until requested.
 - **Recon sample.** Five-project sample on the dev account confirmed the pattern. UUIDv7 across all five.
+
+## /recents page (v0.2 sync feature)
+
+The sync button loads `/recents` in a hidden same-origin iframe and scrapes conversation cells. Recon notes:
+
+### Iframe embedding
+
+Same-origin iframe of `claude.ai/recents` from a `claude.ai/*` content script works in Brave, Chrome, and Vivaldi. claude.ai does not set a CSP that blocks `frame-src 'self'` for its own pages. If a future CSP tightening blocks this, the fallback would be a same-tab navigation (disruptive to the user's session) or a `chrome.tabs` API path (requires a permission expansion).
+
+### Conversation cell selector
+
+```
+a[href^="/chat/"][data-dd-action-name="conversation-cell"]
+```
+
+Defensive AND-condition, mirrors the sidebar pattern. URL fallback (`a[href^="/chat/"]`) covers Datadog attribute drift.
+
+### Show more button
+
+The /recents grid paginates client-side. Initial render is ~30 cards; clicking "Show more" appends another batch. The button text matches case-insensitively as `show more`. Selector pattern:
+
+```js
+[...iframeDoc.querySelectorAll('button')].find(b =>
+  b.textContent.trim().toLowerCase() === 'show more'
+);
+```
+
+The button disappears from the DOM when the user has reached the end of their chat history. The sync loop terminates when:
+- The button is no longer found, or
+- A click does not grow the cell count within 5 seconds (per-click timeout), or
+- 50 clicks have happened (hard cap to bound runtime).
+
+### Drag preemption (drop-side)
+
+claude.ai's React layer often clears or replaces `dataTransfer` between dragstart (where our content script writes `application/x-cwcf-item`) and drop (where the panel/strip reads it). The drop-side fallback reads `text/uri-list` / `text/plain` / `text/x-moz-url` / `URL` and parses the chat UUID from the URL. A `console.warn` fires on the fallback path so the preemption is visible in the console even when the assignment succeeds.

@@ -6,11 +6,13 @@ This document captures the design decisions for Claude Web Chat Folders. It exis
 
 Add folder organization to claude.ai chats. Local storage only. JSON export/import for portability. No backend, no API access, no telemetry.
 
-Four UI surfaces (v0.1 + v0.2):
-1. **Toolbar popup** - folder CRUD, settings, import/export, nested-tree view of folders, drag-reorder within sections, the only place to create or delete folders.
-2. **Browser right-click context menu** - per-chat assignment from claude.ai's sidebar without opening the popup. Service-worker-driven via `chrome.contextMenus`. Zero claude.ai DOM dependency.
-3. **In-page folder strip (default view mode)** - thin vertical overlay on claude.ai's left edge showing pinned folders as drop targets. Content-script-driven, fixed-position, viewport-anchored.
-4. **In-page folder panel (organize view mode)** - full folder tree overlay over claude.ai's sidebar with search, drag-and-drop, nested folders, auto-organize. Content-script-driven, fixed-position, anchored to claude.ai's `<nav>` rect.
+UI surfaces (v0.2):
+1. **Toolbar popup** - folder CRUD, settings, import/export, nested-tree view of folders, drag-reorder within sections. Retained from v0.1; redundant with the in-page settings overlay but kept for users who prefer popup workflow.
+2. **In-page folder strip (default view mode)** - thin vertical overlay on claude.ai's left edge showing pinned folders as drop targets. Content-script-driven, fixed-position, anchored to the right of `<nav>`.
+3. **In-page folder panel (organize view mode)** - full folder tree overlay over claude.ai's sidebar with search, drag-and-drop, nested folders, auto-organize, sync, and the Unsorted union. Content-script-driven, fixed-position, anchored to claude.ai's `<nav>` rect.
+4. **In-page settings overlay** - cog buttons on strip and panel open a modal with Appearance / View / Auto-organize / Folders / Behavior / Data sections. Replaces the v0.1 popup-tab fallback (Brave Shields blocked it) and now mirrors the popup's full settings surface.
+5. **Folder editor modal** - styled in-page modal for create and edit of folders, replacing the prompt-based `+` button.
+6. **In-page right-click menus** - one for chat anchors (Add to folder, Open in new tab, Remove from folder), one for folder rows in the panel (Edit, Pin, Add child, Delete). Replaces the v0.1 `chrome.contextMenus` registration; both menus are styled CWCF surfaces driven by content-script `contextmenu` listeners.
 
 The view mode (`default` vs `organize`) is a per-device setting persisted in `chrome.storage.local`. Toggle buttons in both the strip and the panel flip the setting; subscribeToChanges propagates the change to all open claude.ai tabs.
 
@@ -281,24 +283,32 @@ These items moved from "deferred" to "shipped" with the v0.2 visual layer:
 
 - **In-page surfaces.** Folder strip (default mode) and folder panel (organize mode) now exist on claude.ai as fixed-position overlays. Toggle setting `viewMode` flips between them.
 - **Nested folders.** `parentId` schema field with cycle detection (`isAncestor`), recursive helpers (`getRootFolders`, `getChildFolders`, `getDescendantFolders`, `getAncestorChain`), and the public `moveToParent` API.
-- **Drag-and-drop assignment.** Native HTML5 DnD on chat anchors plus drop targets in strip and panel. Source/target matrix: claude.ai sidebar → strip swatch / panel folder, panel chat → different panel folder, panel chat → Unsorted, panel folder → different panel folder (cycle-checked), panel folder → root drop zone.
+- **Drag-and-drop assignment.** Native HTML5 DnD on chat anchors plus drop targets in strip and panel. Source/target matrix: claude.ai sidebar → strip swatch / panel folder, panel chat → different panel folder, panel chat → Unsorted, panel folder → different panel folder (cycle-checked), panel folder → root drop zone. Drop handlers fall back to `text/uri-list` / `text/plain` URL parsing when claude.ai's React preempts the CWCF payload between dragstart and drop.
 - **Auto-organize by name match.** Lightning bolt button in panel header. Match mode (`contains` / `exact`) configurable in settings. Suggestions are in-memory (per-panel-instance), not persisted.
 - **Title cache via in-page sweep.** Content script's MutationObserver reads `anchor.innerText` into `storage.itemTitles`, throttled at 30s minimum interval per item ref. Resolves the v0.1 "chat <uuid-prefix>" display fallback for any chat that has been visible in the sidebar since the extension loaded.
+- **Schema v3 with chat cache.** `chatCache: { lastSyncedAt, chats: { [uuid]: { title, lastSyncedAt } } }` extends title coverage beyond what claude.ai's sidebar virtualizes. `setCachedChats` / `getChatCache` / `clearChatCache` exposed by storage; `migrateV2ToV3` adds the field on existing installs without dropping data.
+- **Sync feature.** Panel-header sync button loads `claude.ai/recents` in a hidden same-origin iframe, polls for the conversation-cell selector to render, then auto-clicks the "Show more" button up to 50 times (or until the count plateaus) to enumerate every chat the user can access. Results write to `chatCache`. A live status overlay anchored inside the panel shows the running count, success message, or failure reason.
+- **Folder editor modal.** `src/content/folder-modal.js` renders an in-page modal for create and edit of folders: name, parent (with cycle exclusion), color (recents + presets), emoji icon (lazy-imported `emoji-set.js` with category headings), description. Replaces the prompt-based `+` button.
+- **Right-click context menus.** Two custom in-page menus replace browser-native menus across both folder and chat surfaces. Folder rows in the panel: Edit, Pin/Unpin, Add child folder, Delete. Chat anchors anywhere on claude.ai (sidebar or panel rows): Open chat, Open in new tab, Add to folder (each folder listed with `✓` on the assigned ones; click toggles), Manage folders, Remove from this folder / Remove from all folders. Both reuse the `.cwcf-fmenu` styling.
+- **Theme broadcast.** `applyActiveTheme` in `main.js` calls `resolveTheme(activeTheme, customTheme)` and writes the token map to `document.documentElement` as CSS custom properties. `content.css` references `var(--bg-primary, ...)` / `var(--accent-primary, ...)` etc. via `color-mix()` for translucent variants. Live-applies on settings change. Strip, panel, modal, settings overlay, and both context menus all pick up the active theme.
+- **In-page settings overlay parity.** The cog button on the strip and the panel both open `settings-overlay.js`, which now mirrors the popup's full settings surface: Appearance (theme, density, reduce motion, default folder color), In-page view (view mode, strip cap, strip overflow), Auto-organize (match mode), Folders (counts, quick-assign), Behavior (confirm delete, search enabled), Data (auto backup, export, import, storage usage).
+- **Unsorted union.** The Unsorted node in the panel unions sidebar-rendered chat anchors with `chatCache` entries, deduped by UUID. Search across the panel falls through to cached titles when `itemTitles` lacks an entry.
+
+The `chrome.contextMenus` registration was removed in v0.2 along with the `contextMenus` permission. The in-page chat menu fully replaces it. `src/background.js` now only forwards a popup→content "open settings overlay" message; if the popup is removed, the service worker can go too.
 
 ## Deferred features
 
 Schema fields exist for these where relevant. UI lands in v0.3 or later.
 
-- Custom theme override panel (the user-facing UI for setting per-token hex values; the schema field `customTheme` is honored by `resolveTheme` already).
-- Density toggle (`density: "comfortable" | "compact"`).
-- Auto-backup (`autoBackup: "off" | "daily" | "weekly"`). Adding this needs the `chrome.downloads` permission, an explicit Web Store review surface increase. Defer until requested.
+- Custom theme override panel (the user-facing UI for setting per-token hex values; the schema field `customTheme` is honored by `resolveTheme` already, but no editor UI ships in v0.2).
 - Folder description display in the detail view as more than a single paragraph.
 - Recently-used folder sort (`lastUsedAt` field exists, no UI yet).
 - Bulk operations (select multiple chats, assign to folder).
 - Search expansion (per-item search, full-text across descriptions).
 - Keyboard shortcuts. `Alt+1-9` to assign current chat to one of the top 9 folders. The `commands` manifest key has a hard limit of 4 default shortcuts. Beyond 4, the user assigns keys via `chrome://extensions/shortcuts`.
-- Theme broadcast to content script. The strip and panel currently use hard-coded neon-purple chrome regardless of `activeTheme`. v0.3 path: write resolved theme tokens to a dedicated storage subkey, content script reads on init and on `subscribeToChanges`, injects a `<style>` element setting CSS custom properties for `.cwcf-strip` and `.cwcf-panel` selectors.
-- Projects support. The schema accepts `project:<uuid>` typed item refs and `selectors.js` exports a project URL pattern. v0.2 right-click only fires on chat links. v0.3 can extend the context menu and DnD targets to project URLs once the project DOM has been characterized. Recon for projects is captured in DOM-NOTES.
+- Auto-backup actual implementation. The setting accepts `off` / `daily` / `weekly` and persists across sessions, but no scheduler runs yet. Wiring this needs the `chrome.downloads` permission, a Web Store review surface increase. Defer until requested.
+- Projects support. The schema accepts `project:<uuid>` typed item refs and `selectors.js` exports a project URL pattern. v0.2 chat menu only fires on `/chat/<uuid>` anchors. v0.3 can extend to project URLs once the project DOM has been characterized. Recon for projects is captured in DOM-NOTES.
+- /recents page DnD. Sync covers enumeration; live drag from the `/recents` cards into our overlays does not yet work because the strip/panel drag sources are scoped to the sidebar (`<nav>`) only.
 - /recents page support. Same shape as projects: anchors there carry a different Datadog action name (`conversation-cell`) but the URL pattern is identical (`/chat/<uuid>`). The right-click context menu's `targetUrlPatterns` already covers `/chat/<uuid>` regardless of which page the link is on, so this may already work for the menu. The strip/panel drag sources are scoped to the sidebar (`<nav>`) only; v0.3 may extend to `/recents` cards.
 - Auto-organize by keyword rules. v0.2 ships name-match only. The `folder.autoAssignKeywords` schema field exists for v0.3 keyword rules but is not consumed yet.
 - Auto-organize "apply all" bulk action. v0.2 requires per-suggestion confirm. v0.3 may add an "Apply all suggestions" button.
