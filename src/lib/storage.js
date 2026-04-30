@@ -1,5 +1,5 @@
 export const STORAGE_KEY = 'cwcf_data';
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 const APP_VERSION = '0.2.0';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,7 +37,8 @@ function defaultSettings() {
     viewMode: 'default',
     stripCap: 6,
     stripOverflowBehavior: 'indicator',
-    autoOrganizeMatchMode: 'contains'
+    autoOrganizeMatchMode: 'contains',
+    unsortedCollapsed: false
   };
 }
 
@@ -47,6 +48,7 @@ function defaultState() {
     folders: [],
     assignments: {},
     itemTitles: {},
+    chatCache: { lastSyncedAt: null, chats: {} },
     settings: defaultSettings(),
     lastModified: Date.now()
   };
@@ -67,6 +69,7 @@ function migrateIfNeeded(state) {
   if (!state.version) return state;
   let s = state;
   if (s.version === 1) s = migrateV1ToV2(s);
+  if (s.version === 2) s = migrateV2ToV3(s);
   if (s.version === CURRENT_SCHEMA_VERSION) return s;
   console.warn(`[CWCF] Loaded state with unknown schema version ${s.version}, using as-is`);
   return s;
@@ -91,6 +94,21 @@ function migrateV1ToV2(state) {
       stripCap: state.settings?.stripCap ?? 6,
       stripOverflowBehavior: state.settings?.stripOverflowBehavior ?? 'indicator',
       autoOrganizeMatchMode: state.settings?.autoOrganizeMatchMode ?? 'contains'
+    }
+  };
+}
+
+// Adds chatCache (populated by the sync feature) and the
+// unsortedCollapsed setting (panel-side toggle for the Unsorted node).
+// Migration is additive and idempotent like v1->v2.
+function migrateV2ToV3(state) {
+  return {
+    ...state,
+    version: 3,
+    chatCache: state.chatCache ?? { lastSyncedAt: null, chats: {} },
+    settings: {
+      ...state.settings,
+      unsortedCollapsed: state.settings?.unsortedCollapsed ?? false
     }
   };
 }
@@ -428,7 +446,8 @@ function validateSettingsPartial(p) {
     viewMode: v => VALID_VIEW_MODE.includes(v),
     stripCap: v => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= STRIP_CAP_MAX,
     stripOverflowBehavior: v => VALID_STRIP_OVERFLOW.includes(v),
-    autoOrganizeMatchMode: v => VALID_AUTO_ORGANIZE_MATCH.includes(v)
+    autoOrganizeMatchMode: v => VALID_AUTO_ORGANIZE_MATCH.includes(v),
+    unsortedCollapsed: v => typeof v === 'boolean'
   };
   for (const [key, value] of Object.entries(p)) {
     const check = checks[key];
@@ -533,7 +552,8 @@ export async function exportToJson() {
     version: state.version,
     folders: state.folders,
     assignments: state.assignments,
-    itemTitles: state.itemTitles
+    itemTitles: state.itemTitles,
+    chatCache: state.chatCache ?? { lastSyncedAt: null, chats: {} }
   };
   return JSON.stringify(payload, null, 2);
 }
@@ -683,6 +703,47 @@ function sanitizeImportedTitles(titles) {
     if (typeof title === 'string') out[ref] = title;
   }
   return out;
+}
+
+// ---------- Chat cache ----------
+// Synced enumeration of claude.ai's full chat list, populated by the
+// content script's sync feature. Used by the panel's Unsorted node to show
+// chats beyond the ~47 that claude.ai keeps in the live sidebar.
+
+// Fully replaces the cache with the provided chatsArray. Each entry should
+// be { uuid, title }. Bad entries are dropped silently. Updates
+// chatCache.lastSyncedAt to now.
+export async function setCachedChats(chatsArray) {
+  return enqueueWrite(async () => {
+    const state = await readRaw();
+    const next = {};
+    const now = Date.now();
+    if (Array.isArray(chatsArray)) {
+      for (const entry of chatsArray) {
+        if (!entry || typeof entry !== 'object') continue;
+        const { uuid, title } = entry;
+        if (typeof uuid !== 'string' || !uuid) continue;
+        if (typeof title !== 'string') continue;
+        next[uuid] = { title, lastSyncedAt: now };
+      }
+    }
+    state.chatCache = { lastSyncedAt: now, chats: next };
+    await writeRaw(state);
+    return state.chatCache;
+  });
+}
+
+export async function getChatCache() {
+  const state = await readRaw();
+  return state.chatCache ?? { lastSyncedAt: null, chats: {} };
+}
+
+export async function clearChatCache() {
+  return enqueueWrite(async () => {
+    const state = await readRaw();
+    state.chatCache = { lastSyncedAt: null, chats: {} };
+    await writeRaw(state);
+  });
 }
 
 // ---------- Utilities ----------

@@ -83,12 +83,12 @@ When the branch advances and you want the latest code:
 
 ## Run the storage tests
 
-The test page exercises 47 cases covering schema validation, race conditions on parallel writes, idempotency, MRU caps, import format validation, subscription firing, and storage byte counting.
+The test page exercises 52 cases covering schema validation, race conditions on parallel writes, idempotency, MRU caps, import format validation, subscription firing, and storage byte counting.
 
 1. Open the test page URL from the install section.
 2. Click **Back up current state**. A timestamped JSON file downloads to your Downloads folder. Keep it; the test run wipes storage.
 3. Click **Run tests (auto-backs up first, then wipes)**. A second pre-test backup downloads, you confirm the wipe, and the test runner steps through every case.
-4. Expected result: `47 passed, 0 failed of 47`.
+4. Expected result: `52 passed, 0 failed of 52`.
 5. To restore your folders, use the popup's settings panel: **Import** and select the backup JSON.
 
 ## Browser support
