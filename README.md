@@ -14,7 +14,7 @@ The extension adds a toolbar popup for managing folders, and a "Add chat to fold
 
 ## Install (unpacked from source)
 
-This is the canonical install path during v0.1 development. The Chrome Web Store listing will be the canonical path at v1.0.
+This is the canonical install path until v1.0 ships on the Chrome Web Store.
 
 ### Prerequisites
 
@@ -77,12 +77,12 @@ When the branch advances and you want the latest code:
 
 ## Run the storage tests
 
-The test page exercises 31 cases covering schema validation, race conditions on parallel writes, idempotency, MRU caps, import format validation, subscription firing, and storage byte counting.
+The test page exercises 32 cases covering schema validation, race conditions on parallel writes, idempotency, MRU caps, import format validation, subscription firing, and storage byte counting.
 
 1. Open the test page URL from the install section.
 2. Click **Back up current state**. A timestamped JSON file downloads to your Downloads folder. Keep it; the test run wipes storage.
 3. Click **Run tests (auto-backs up first, then wipes)**. A second pre-test backup downloads, you confirm the wipe, and the test runner steps through every case.
-4. Expected result: `31 passed, 0 failed of 31`.
+4. Expected result: `32 passed, 0 failed of 32`.
 5. To restore your folders, use the popup's settings panel: **Import** and select the backup JSON.
 
 ## Browser support
@@ -104,8 +104,8 @@ Firefox uses a different MV3 implementation and a different add-on ID mechanism.
 - The extension does not call Anthropic's API.
 - The extension does not include analytics, error reporting, or any other telemetry.
 - The only data movement is JSON export and import, both user-initiated through the settings panel. Exports download to your local Downloads folder. Imports read a file you select from your local disk.
-- The extension reads the URL and visible title of chat and project links from claude.ai's rendered DOM. It does not read chat content. It does not modify chat content.
-- The host permission `https://claude.ai/*` is required so the content script can inject the per-row folder UI on claude.ai.
+- When you right-click a chat link on claude.ai, the browser passes the link URL to the extension's context menu handler. That URL is the only data the extension sees about a chat. The extension does not read claude.ai's page content. It does not modify claude.ai's page content. It does not read chat content.
+- The host permission `https://claude.ai/*` scopes the right-click context menu to claude.ai. The extension does not run a content script on the page.
 
 ## Issues and contributions
 
