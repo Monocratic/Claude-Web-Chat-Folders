@@ -18,6 +18,11 @@ export function populateSettingsControls() {
   $('setting-theme').value = s.activeTheme;
   $('setting-quick-folder').value = s.quickAssignFolderId || '';
 
+  if ($('setting-auto-organize-mode')) $('setting-auto-organize-mode').value = s.autoOrganizeMatchMode || 'contains';
+  if ($('setting-view-mode')) $('setting-view-mode').value = s.viewMode || 'default';
+  if ($('setting-strip-cap')) $('setting-strip-cap').value = String(s.stripCap ?? 6);
+  if ($('setting-strip-overflow')) $('setting-strip-overflow').value = s.stripOverflowBehavior || 'indicator';
+
   suppressSettingsEvents = false;
 }
 
@@ -90,6 +95,28 @@ export function wireSettingsEvents() {
     const value = e.target.value === '' ? null : e.target.value;
     applySettingChange({ quickAssignFolderId: value });
   });
+
+  if ($('setting-auto-organize-mode')) {
+    $('setting-auto-organize-mode').addEventListener('change', (e) => {
+      applySettingChange({ autoOrganizeMatchMode: e.target.value });
+    });
+  }
+  if ($('setting-view-mode')) {
+    $('setting-view-mode').addEventListener('change', (e) => {
+      applySettingChange({ viewMode: e.target.value });
+    });
+  }
+  if ($('setting-strip-cap')) {
+    $('setting-strip-cap').addEventListener('change', (e) => {
+      const n = parseInt(e.target.value, 10);
+      if (!Number.isNaN(n)) applySettingChange({ stripCap: n });
+    });
+  }
+  if ($('setting-strip-overflow')) {
+    $('setting-strip-overflow').addEventListener('change', (e) => {
+      applySettingChange({ stripOverflowBehavior: e.target.value });
+    });
+  }
 
   $('btn-export').addEventListener('click', handleExport);
   $('btn-import').addEventListener('click', () => $('import-file-input').click());

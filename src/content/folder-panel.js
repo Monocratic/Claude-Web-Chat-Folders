@@ -204,7 +204,9 @@ function buildFolderNode(folder, depth, childrenByParent, assignments, itemTitle
   node.dataset.folderId = folder.id;
 
   const children = (childrenByParent.get(folder.id) || []).slice().sort(folderSortCompare);
-  const itemRefs = filterByQuery(itemRefsInFolder(folder.id, assignments), null);
+  const assignedRefs = itemRefsInFolder(folder.id, assignments);
+  const suggestedRefs = itemRefsSuggestedForFolder(folder.id, assignedRefs);
+  const itemRefs = filterByQuery([...assignedRefs, ...suggestedRefs], null);
   const directCount = (assignments && Object.entries(assignments).filter(([_, ids]) => ids.includes(folder.id)).length) || 0;
   const collapsed = !!folder.collapsed;
 
@@ -378,6 +380,16 @@ function itemRefsInFolder(folderId, assignments) {
   const out = [];
   for (const [ref, ids] of Object.entries(assignments || {})) {
     if (ids.includes(folderId)) out.push(ref);
+  }
+  return out;
+}
+
+function itemRefsSuggestedForFolder(folderId, alreadyAssignedRefs) {
+  const seen = new Set(alreadyAssignedRefs);
+  const out = [];
+  for (const [ref, folderIds] of suggestions.entries()) {
+    if (seen.has(ref)) continue;
+    if (folderIds.has(folderId)) out.push(ref);
   }
   return out;
 }
