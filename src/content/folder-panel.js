@@ -30,15 +30,19 @@ export function unmount() {
   mainState = null;
 }
 
+// Panel covers the chat list area of nav, leaving the top nav block
+// (logo, sidebar collapse, New chat through More) visible. Top edge starts
+// below "More" via api.getTopNavBottomOffset; bottom matches nav's bottom.
 export function reposition() {
   if (!panelEl) return;
   const navEl = api && api.getNavElement && api.getNavElement();
   if (!navEl) return;
   const rect = navEl.getBoundingClientRect();
+  const top = api.getTopNavBottomOffset ? api.getTopNavBottomOffset() : Math.round(rect.top + 280);
   panelEl.style.left = `${Math.round(rect.left)}px`;
   panelEl.style.width = `${Math.round(Math.max(rect.width, 240))}px`;
-  panelEl.style.top = `${Math.round(rect.top)}px`;
-  panelEl.style.height = `${Math.round(rect.height)}px`;
+  panelEl.style.top = `${top}px`;
+  panelEl.style.height = `${Math.round(rect.bottom - top)}px`;
 }
 
 export function render(state) {
@@ -51,13 +55,15 @@ export function render(state) {
   const assignments = state?.loaded?.assignments || {};
   const itemTitles = state?.loaded?.itemTitles || {};
 
-  treeEl.appendChild(buildUnsortedNode(folders, assignments, itemTitles));
-
+  // Real folders render first (organized content user created), then the
+  // Unsorted virtual folder at the bottom as the catch-all.
   const childrenByParent = groupByParent(folders);
   const roots = (childrenByParent.get(null) || []).slice().sort(folderSortCompare);
   for (const f of roots) {
     treeEl.appendChild(buildFolderNode(f, 0, childrenByParent, assignments, itemTitles));
   }
+
+  treeEl.appendChild(buildUnsortedNode(folders, assignments, itemTitles));
 }
 
 function buildPanelDom() {
@@ -95,6 +101,17 @@ function buildPanelDom() {
   createBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   createBtn.addEventListener('click', openPopup);
   headerBtns.appendChild(createBtn);
+
+  const settingsBtn = document.createElement('button');
+  settingsBtn.type = 'button';
+  settingsBtn.className = 'cwcf-panel__icon-btn';
+  settingsBtn.title = 'Open extension settings';
+  settingsBtn.setAttribute('aria-label', 'Open extension settings');
+  settingsBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM8 1l1 2 2 .5 1.5 1.5L12 7l1 2-1.5 2L9 12l-1 2-1-2-2-.5L3.5 10 4 8 3 6l1.5-2L7 3l1-2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+  settingsBtn.addEventListener('click', () => {
+    if (api && api.openPopupAtSettings) api.openPopupAtSettings();
+  });
+  headerBtns.appendChild(settingsBtn);
 
   const collapseBtn = document.createElement('button');
   collapseBtn.type = 'button';
@@ -152,13 +169,15 @@ function buildUnsortedNode(folders, assignments, itemTitles) {
 
   const name = document.createElement('span');
   name.className = 'cwcf-panel__name';
-  name.textContent = 'Unsorted';
+  name.textContent = 'Unsorted (sidebar)';
+  name.title = 'Showing chats from claude.ai\'s sidebar that have no folder assignments. Older chats not currently rendered in the sidebar are not visible here.';
   row.appendChild(name);
 
   const unsortedItems = collectUnsortedItems(assignments);
   const count = document.createElement('span');
   count.className = 'cwcf-panel__count';
   count.textContent = `${unsortedItems.length}`;
+  count.title = 'Sidebar-scoped count. claude.ai only renders ~47 chats at a time; older chats are not counted here.';
   row.appendChild(count);
 
   attachUnsortedDropTarget(row);

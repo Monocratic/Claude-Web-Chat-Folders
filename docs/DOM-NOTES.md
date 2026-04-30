@@ -210,7 +210,32 @@ The selectors module (`src/lib/selectors.js`) exports `navBlock` and `newChatBut
 
 ### Folder strip in default mode
 
-The thin folder strip in default mode is also a `position: fixed` overlay, anchored to the viewport's left edge with `left: 0` rather than computed from `<nav>`. Reasoning: when the sidebar collapses or hides, the strip should remain visible at the viewport edge. Implementation lands in v0.2 commit 4.
+The folder strip in default mode is a `position: fixed` overlay anchored to the **right edge of `<nav>`** (the gutter between claude.ai's sidebar and main chat area). Initial v0.2 commit 4 placed the strip at `left: 0` (viewport-anchored) which overlapped claude.ai's sidebar text and visually broke the page; that decision was reverted in the v0.2 fixup commit. The strip's top edge uses the same "below More" calculation as the panel, so both surfaces start below the always-visible top nav block.
+
+Position math for strip:
+
+- `left` = `nav.getBoundingClientRect().right` (gutter to the right of sidebar)
+- `top` = `getTopNavBottomOffset(navEl)` (same helper as panel)
+- `height` = `nav.getBoundingClientRect().bottom - top`
+- `width` = `40-44px` (fixed via CSS)
+
+If claude.ai's sidebar is collapsed to a narrow strip or hidden entirely, `nav.right` is small (matching the collapsed width) so our strip floats near the viewport's left edge. ResizeObserver on `<nav>` updates the strip's left/width on collapse changes.
+
+### "More" element heuristic
+
+Both strip and panel anchor their top edge below claude.ai's "More" nav item. The lookup chain in `main.js`'s `api.getTopNavBottomOffset`:
+
+1. Primary: `nav.querySelector('[data-dd-action-name="sidebar-more-item"]')`. Datadog action name is the most stable anchor since claude.ai's analytics depend on it.
+2. Fallback: walk `nav.querySelectorAll('a, button')` looking for an element whose `textContent.trim() === 'More'` and that has fewer than 3 children (avoids matching wrapper elements that contain a "More" descendant).
+3. Final fallback: `nav.getBoundingClientRect().top + 280`, an estimate that approximates the typical top-nav-block height in claude.ai's standard layout.
+
+The fallback chain ensures the panel and strip position somewhere reasonable even if both Datadog and text matches break.
+
+### Unsorted virtual folder scope
+
+The Unsorted virtual folder in the panel shows chats that have no folder assignments AND are currently rendered in claude.ai's `<nav>` chat list. claude.ai only renders ~47 chats at a time in the visible window; older chats live on the `/recents` page (a separate full-page surface, see "All chats page" section below).
+
+The Unsorted folder's label is "Unsorted (sidebar)" with a tooltip noting the scope limit. Its count badge reflects only the currently-rendered subset. v0.3 candidate: extend the content script to also consume `/recents` page anchors when the user navigates there, expanding Unsorted's scope to include all chats. v0.2 ships sidebar-scoped to keep the implementation bounded.
 
 ## v0.2 recon checklist
 

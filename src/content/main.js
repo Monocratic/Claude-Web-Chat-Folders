@@ -186,6 +186,34 @@ function getApi() {
     getChatAnchorByUuid: (uuid) => {
       return document.querySelector(`a[href="/chat/${uuid}"]`);
     },
+    getTopNavBottomOffset: () => {
+      const nav = state.navEl;
+      if (!nav) return 0;
+      // Prefer the Datadog-anchored "More" item; fall back to text match;
+      // final fallback is a fixed offset from nav top.
+      const moreEl = nav.querySelector('[data-dd-action-name="sidebar-more-item"]');
+      if (moreEl) return Math.round(moreEl.getBoundingClientRect().bottom);
+      const textMatch = [...nav.querySelectorAll('a, button')].find(
+        el => el.textContent.trim() === 'More' && el.children.length < 3
+      );
+      if (textMatch) return Math.round(textMatch.getBoundingClientRect().bottom);
+      return Math.round(nav.getBoundingClientRect().top + 280);
+    },
+    openPopupAtSettings: async () => {
+      // Try chrome.action.openPopup first (works in some Chromium browsers
+      // from a user gesture). Fall back to opening popup.html as a tab with
+      // a hash that routes to the settings view.
+      try {
+        if (chrome.action && chrome.action.openPopup) {
+          await chrome.action.openPopup();
+          return;
+        }
+      } catch {
+        // fall through
+      }
+      const url = chrome.runtime.getURL('src/popup/popup.html#settings');
+      chrome.tabs.create({ url });
+    },
     runSweep
   };
 }

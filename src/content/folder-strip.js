@@ -13,6 +13,7 @@ export function mount(state, apiHandle) {
   if (stripEl) return;
   stripEl = buildStripDom();
   document.body.appendChild(stripEl);
+  reposition();
   render(state);
 }
 
@@ -25,9 +26,19 @@ export function unmount() {
   mainState = null;
 }
 
+// Strip sits in the gutter to the right of claude.ai's nav. Top edge starts
+// below the "More" nav item (computed by main.js api.getTopNavBottomOffset).
+// Bottom matches nav's bottom. Doesn't overlap claude.ai's sidebar content.
 export function reposition() {
-  // Strip is anchored to viewport left edge; reposition is a no-op for
-  // layout but kept as part of the module API for parity with the panel.
+  if (!stripEl) return;
+  const nav = api && api.getNavElement && api.getNavElement();
+  if (!nav) return;
+  const navRect = nav.getBoundingClientRect();
+  const top = api.getTopNavBottomOffset ? api.getTopNavBottomOffset() : Math.round(navRect.top + 280);
+  stripEl.style.left = `${Math.round(navRect.right)}px`;
+  stripEl.style.top = `${top}px`;
+  stripEl.style.height = `${Math.round(navRect.bottom - top)}px`;
+  stripEl.style.bottom = '';
 }
 
 export function render(state) {
@@ -74,6 +85,7 @@ function buildStripDom() {
 
   const header = document.createElement('div');
   header.className = 'cwcf-strip__header';
+
   const toggleBtn = document.createElement('button');
   toggleBtn.type = 'button';
   toggleBtn.className = 'cwcf-strip__toggle';
@@ -84,6 +96,18 @@ function buildStripDom() {
     if (api) api.setViewMode('organize');
   });
   header.appendChild(toggleBtn);
+
+  const settingsBtn = document.createElement('button');
+  settingsBtn.type = 'button';
+  settingsBtn.className = 'cwcf-strip__settings';
+  settingsBtn.title = 'Open extension settings';
+  settingsBtn.setAttribute('aria-label', 'Open extension settings');
+  settingsBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM8 1l1 2 2 .5 1.5 1.5L12 7l1 2-1.5 2L9 12l-1 2-1-2-2-.5L3.5 10 4 8 3 6l1.5-2L7 3l1-2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+  settingsBtn.addEventListener('click', () => {
+    if (api && api.openPopupAtSettings) api.openPopupAtSettings();
+  });
+  header.appendChild(settingsBtn);
+
   aside.appendChild(header);
 
   const list = document.createElement('div');
