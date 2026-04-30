@@ -1,0 +1,3 @@
+/* Styles for v0.2 content script. Populated in commits 4 (folder strip) and
+   5 (folder panel). All selectors are scoped via .cwcf-* prefixes; nothing
+   in this file touches claude.ai's existing classes or elements. */

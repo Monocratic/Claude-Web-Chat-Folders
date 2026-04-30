@@ -13,5 +13,27 @@
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["src/content/content.js"],
+      "css": ["src/content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/content/main.js",
+        "src/content/folder-strip.js",
+        "src/content/folder-panel.js",
+        "src/content/drag-handlers.js",
+        "src/lib/storage.js",
+        "src/lib/selectors.js",
+        "src/lib/themes.js"
+      ],
+      "matches": ["https://claude.ai/*"]
+    }
+  ]
 }
