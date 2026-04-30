@@ -182,6 +182,45 @@
   box-sizing: border-box;
 }
 
+.cwcf-panel__sync-status {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  background: rgba(30, 24, 48, 0.95);
+  color: #E5E0F0;
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.cwcf-panel__sync-status--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cwcf-panel__sync-status--progress {
+  border-color: rgba(167, 139, 250, 0.55);
+}
+
+.cwcf-panel__sync-status--success {
+  border-color: rgba(132, 204, 22, 0.6);
+  color: #D5F0A6;
+}
+
+.cwcf-panel__sync-status--error {
+  border-color: rgba(255, 107, 157, 0.6);
+  color: #FFB6CC;
+}
+
 .cwcf-panel__header {
   display: flex;
   align-items: center;

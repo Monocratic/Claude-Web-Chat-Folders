@@ -761,6 +761,9 @@ function handleCreateFolder() {
 }
 
 let syncInFlight = false;
+let syncStatusEl = null;
+let syncStatusHideTimer = null;
+let syncUnsubscribe = null;
 
 async function handleSyncClick(btn) {
   if (syncInFlight) return;
@@ -768,22 +771,86 @@ async function handleSyncClick(btn) {
   syncInFlight = true;
   btn.classList.add('cwcf-panel__icon-btn--busy');
   btn.disabled = true;
-  const prevTitle = btn.title;
-  btn.title = 'Syncing…';
+
+  showSyncStatus('Syncing…', 'progress');
+  await ensureSyncSubscription();
+
   try {
     const result = await api.runSync();
-    btn.title = `Synced ${result.count} chats`;
-    setTimeout(() => { btn.title = prevTitle; }, 3000);
+    showSyncStatus(`Synced ${result.count} chats`, 'success');
+    scheduleSyncStatusHide(3000);
   } catch (err) {
     console.error('[CWCF] sync failed', err);
-    btn.title = `Sync failed: ${err.message || err}`;
-    window.alert(`Sync failed: ${err.message || err}\n\nThis usually means claude.ai blocks iframe embedding of /recents.`);
-    setTimeout(() => { btn.title = prevTitle; }, 3000);
+    const reason = err && err.message ? err.message : String(err);
+    showSyncStatus(`Sync failed: ${reason}`, 'error');
+    scheduleSyncStatusHide(6000);
   } finally {
     syncInFlight = false;
     btn.classList.remove('cwcf-panel__icon-btn--busy');
     btn.disabled = false;
   }
+}
+
+async function ensureSyncSubscription() {
+  if (syncUnsubscribe) return;
+  if (!api || !api.subscribeSync) return;
+  syncUnsubscribe = await api.subscribeSync(handleSyncEvent);
+}
+
+function handleSyncEvent(event) {
+  if (!event) return;
+  switch (event.phase) {
+    case 'starting':
+      showSyncStatus('Opening /recents…', 'progress');
+      break;
+    case 'loading':
+      showSyncStatus('Waiting for chats to render…', 'progress');
+      break;
+    case 'expanding':
+      showSyncStatus(`Loading more… ${event.count} chats found`, 'progress');
+      break;
+    case 'settling':
+      showSyncStatus(`Finalizing… ${event.count} chats found`, 'progress');
+      break;
+    case 'done':
+      showSyncStatus(`Synced ${event.count} chats`, 'success');
+      break;
+    case 'error':
+      showSyncStatus(`Sync failed: ${event.message || 'unknown error'}`, 'error');
+      break;
+  }
+}
+
+function ensureSyncStatusEl() {
+  if (syncStatusEl && document.body.contains(syncStatusEl)) return syncStatusEl;
+  if (!panelEl) return null;
+  syncStatusEl = document.createElement('div');
+  syncStatusEl.className = 'cwcf-panel__sync-status';
+  syncStatusEl.setAttribute('role', 'status');
+  syncStatusEl.setAttribute('aria-live', 'polite');
+  panelEl.appendChild(syncStatusEl);
+  return syncStatusEl;
+}
+
+function showSyncStatus(text, kind) {
+  const el = ensureSyncStatusEl();
+  if (!el) return;
+  if (syncStatusHideTimer) {
+    clearTimeout(syncStatusHideTimer);
+    syncStatusHideTimer = null;
+  }
+  el.textContent = text;
+  el.classList.remove('cwcf-panel__sync-status--success', 'cwcf-panel__sync-status--error', 'cwcf-panel__sync-status--progress');
+  el.classList.add(`cwcf-panel__sync-status--${kind}`);
+  el.classList.add('cwcf-panel__sync-status--visible');
+}
+
+function scheduleSyncStatusHide(ms) {
+  if (syncStatusHideTimer) clearTimeout(syncStatusHideTimer);
+  syncStatusHideTimer = setTimeout(() => {
+    if (syncStatusEl) syncStatusEl.classList.remove('cwcf-panel__sync-status--visible');
+    syncStatusHideTimer = null;
+  }, ms);
 }
 
 let activeFolderMenu = null;

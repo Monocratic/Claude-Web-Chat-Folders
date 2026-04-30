@@ -264,6 +264,13 @@ function getApi() {
       }
       return state.modules.sync.runSync();
     },
+    subscribeSync: async (fn) => {
+      if (!state.modules.sync) {
+        const url = chrome.runtime.getURL('src/content/sync.js');
+        state.modules.sync = await import(url);
+      }
+      return state.modules.sync.subscribe(fn);
+    },
     openFolderModal: async (options = {}) => {
       try {
         if (!state.modules.folderModal) {
