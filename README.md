@@ -30,10 +30,10 @@ This is the canonical install path until v1.0 ships on the Chrome Web Store.
    cd <destination-path>
    ```
 
-2. Check out the v0.1 development branch. Until v0.1 merges to `main`, this branch is the current install source. After the v0.1 release lands on `main`, install from `main` instead.
+2. The default branch (`main`) holds the latest release. A fresh clone leaves you on `main` already; if you've previously checked out a different branch, switch back:
 
    ```
-   git checkout claude/chrome-chat-folder-extension-9GPuT
+   git checkout main
    ```
 
 3. Open your browser's extensions page:
@@ -66,7 +66,7 @@ When the branch advances and you want the latest code:
 
    ```
    cd <repo-path>
-   git pull origin claude/chrome-chat-folder-extension-9GPuT
+   git pull origin main
    ```
 
 2. Open the extensions page in your browser.
