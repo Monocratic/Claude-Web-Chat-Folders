@@ -109,7 +109,7 @@ function buildPanelDom() {
   settingsBtn.setAttribute('aria-label', 'Open extension settings');
   settingsBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM8 1l1 2 2 .5 1.5 1.5L12 7l1 2-1.5 2L9 12l-1 2-1-2-2-.5L3.5 10 4 8 3 6l1.5-2L7 3l1-2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
   settingsBtn.addEventListener('click', () => {
-    if (api && api.openPopupAtSettings) api.openPopupAtSettings();
+    if (api && api.openSettingsOverlay) api.openSettingsOverlay();
   });
   headerBtns.appendChild(settingsBtn);
 

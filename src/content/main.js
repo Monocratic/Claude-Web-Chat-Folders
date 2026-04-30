@@ -14,7 +14,8 @@ const state = {
   modules: {
     strip: null,
     panel: null,
-    drag: null
+    drag: null,
+    settings: null
   },
   titleCacheLastWrite: new Map()
 };
@@ -108,6 +109,11 @@ function rerenderActiveModule() {
     state.modules.panel.render(state);
   } else if (state.modules.strip && state.modules.strip.render) {
     state.modules.strip.render(state);
+  }
+  // If the settings overlay is open, refresh its values from the new state
+  // so changes from popup/context-menu/other-tab reflect immediately.
+  if (state.modules.settings && state.modules.settings.isOpen && state.modules.settings.isOpen()) {
+    state.modules.settings.onStateChange({ loaded: state.loaded });
   }
 }
 
@@ -219,20 +225,22 @@ function getApi() {
       // Final fallback: estimate based on top of nav.
       return Math.round(nav.getBoundingClientRect().top + 280);
     },
-    openPopupAtSettings: async () => {
-      // Try chrome.action.openPopup first (works in some Chromium browsers
-      // from a user gesture). Fall back to opening popup.html as a tab with
-      // a hash that routes to the settings view.
+    openSettingsOverlay: async () => {
+      // In-page settings: render the settings UI as an overlay over
+      // claude.ai, no popup or new tab. Click outside, Escape, or close
+      // X dismisses. The module is dynamic-imported on first open so
+      // its code only loads when the user actually clicks the cog.
       try {
-        if (chrome.action && chrome.action.openPopup) {
-          await chrome.action.openPopup();
-          return;
+        if (!state.modules.settings) {
+          const url = chrome.runtime.getURL('src/content/settings-overlay.js');
+          state.modules.settings = await import(url);
         }
-      } catch {
-        // fall through
+        if (state.modules.settings && state.modules.settings.mount) {
+          state.modules.settings.mount({ loaded: state.loaded }, getApi());
+        }
+      } catch (err) {
+        console.error('[CWCF] failed to open settings overlay', err);
       }
-      const url = chrome.runtime.getURL('src/popup/popup.html#settings');
-      chrome.tabs.create({ url });
     },
     runSweep
   };
