@@ -220,25 +220,38 @@ function attachDropTarget(el, folderId) {
 }
 
 function readDraggedItemRef(dt) {
-  // Prefer a CWCF-formatted payload from drag-handlers.js if present.
   const cwcfPayload = dt.getData('application/x-cwcf-item');
   if (cwcfPayload) {
     try {
       const parsed = JSON.parse(cwcfPayload);
       if (parsed && parsed.itemRef) return parsed.itemRef;
-    } catch {
-      // fall through
+    } catch {}
+  }
+  // Fallback path: claude.ai's React often clears or replaces dataTransfer
+  // between dragstart and drop, so the CWCF payload is gone by drop time.
+  // Reconstruct from any URL-bearing native DnD data we can find.
+  const candidates = [
+    dt.getData('text/uri-list'),
+    dt.getData('text/plain'),
+    dt.getData('text/x-moz-url'),
+    dt.getData('URL')
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      try {
+        const path = new URL(trimmed, window.location.origin).pathname;
+        const uuid = extractChatUuid(path);
+        if (uuid) {
+          console.warn('[CWCF] DnD: CWCF payload missing at drop time; falling back to URL data. claude.ai likely preempted dataTransfer between dragstart and drop.');
+          return `chat:${uuid}`;
+        }
+      } catch {}
     }
   }
-  // Fallback: native anchor drag carries the URL as text/uri-list or text/plain.
-  const uriList = dt.getData('text/uri-list') || dt.getData('text/plain');
-  if (!uriList) return null;
-  let path;
-  try {
-    path = new URL(uriList, window.location.origin).pathname;
-  } catch {
-    return null;
-  }
-  const uuid = extractChatUuid(path);
-  return uuid ? `chat:${uuid}` : null;
+  const types = dt.types ? Array.from(dt.types).join(', ') : '(none)';
+  console.warn(`[CWCF] DnD (strip): drop received with no usable payload. Available dataTransfer types: ${types}`);
+  return null;
 }

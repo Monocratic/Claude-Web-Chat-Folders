@@ -655,14 +655,39 @@ function readDragPayload(dt) {
       return JSON.parse(raw);
     } catch {}
   }
-  // Fallback: native anchor drag from claude.ai's sidebar
-  const uri = dt.getData('text/uri-list') || dt.getData('text/plain');
-  if (uri) {
-    try {
-      const path = new URL(uri, window.location.origin).pathname;
-      const uuid = extractChatUuid(path);
-      if (uuid) return { kind: 'chat', itemRef: `chat:${uuid}`, sourceFolderId: null };
-    } catch {}
+  // Fallback path: claude.ai's React often clears or replaces dataTransfer
+  // between dragstart and drop, so the CWCF payload is gone by drop time.
+  // Reconstruct from any URL-bearing native DnD data the browser populates
+  // for an anchor drag. Try all variants we have observed.
+  const uuid = extractUuidFromDataTransfer(dt);
+  if (uuid) {
+    console.warn('[CWCF] DnD: CWCF payload missing at drop time; falling back to URL data. claude.ai likely preempted dataTransfer between dragstart and drop.');
+    return { kind: 'chat', itemRef: `chat:${uuid}`, sourceFolderId: null };
+  }
+  const types = dt.types ? Array.from(dt.types).join(', ') : '(none)';
+  console.warn(`[CWCF] DnD: drop received with no usable payload. Available dataTransfer types: ${types}`);
+  return null;
+}
+
+function extractUuidFromDataTransfer(dt) {
+  const candidates = [
+    dt.getData('text/uri-list'),
+    dt.getData('text/plain'),
+    dt.getData('text/x-moz-url'),
+    dt.getData('URL')
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    // text/uri-list and text/x-moz-url can be multi-line
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      try {
+        const path = new URL(trimmed, window.location.origin).pathname;
+        const uuid = extractChatUuid(path);
+        if (uuid) return uuid;
+      } catch {}
+    }
   }
   return null;
 }
@@ -690,7 +715,7 @@ function runAutoOrganize() {
   const folders = mainState.loaded?.folders || [];
   const titles = mainState.loaded?.itemTitles || {};
   const matchMode = mainState.loaded?.settings?.autoOrganizeMatchMode || 'contains';
-  const allChatRefs = collectAllChatRefsFromSidebar();
+  const allChatRefs = collectAllChatRefs();
   const allRefs = new Set([...allChatRefs, ...Object.keys(titles)]);
 
   suggestions.clear();
