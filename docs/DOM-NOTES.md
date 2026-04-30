@@ -49,6 +49,8 @@ const sidebar = document.querySelector('nav');
 
 This is the MutationObserver target. Observe with `{ childList: true, subtree: true }`. Subtree because chat rows mount as `<li>` children of `<ul>` children of various sections inside the nav.
 
+The `v0.2 navigation block split` section below extends this recon to characterize the top-of-nav structure that the v0.2 organize-mode overlay positions against.
+
 Sidebar `<nav>` classes (current, do not anchor on these): `flex flex-col px-0 fixed left-0 border-r-0.5 h-screen lg:bg-gradient-to-t from-b...` (Tailwind utility classes, will change).
 
 ### Datadog action names in the sidebar
@@ -165,6 +167,94 @@ Steps to investigate when the extension stops injecting buttons or injects them 
 ## When something is unclear
 
 When in doubt about whether a selector is stable, prefer the more structural choice. Anchor on URL patterns first. Then `data-testid` values that name structural concerns ("sidebar", "chat-list-item"). Then ARIA roles. Class names absolute last resort.
+
+## v0.2 navigation block split
+
+v0.2 introduces an in-page surface on claude.ai that toggles between two view modes. This section documents the conceptual split between which parts of the sidebar stay visible and which get covered by our overlay in each mode.
+
+### What stays visible always
+
+The top of `<nav>` holds structural navigation that users always need:
+
+- Claude logo
+- Sidebar collapse button
+- "New chat" button (`[data-dd-action-name="sidebar-new-item"]`)
+- Top-level nav links such as "Recents", "Projects", and "More" (`[data-dd-action-name="sidebar-nav-item"]` entries)
+
+These elements remain reachable in both default and organize modes. Our overlay does not cover them.
+
+### What gets covered in organize mode
+
+Below the top nav block sits the chat list section, containing claude.ai's "Starred" subsection (pinned chats) and "Recents" subsection (chronological). This region is what organize mode replaces with our folder panel.
+
+### Overlay strategy
+
+The folder panel is rendered as a `position: fixed` overlay positioned over the chat list region of `<nav>`. Critically, the overlay is appended to `<body>` (or a sibling root), not injected into `<nav>`. claude.ai's React owns `<nav>`'s subtree and may re-render it; an overlay outside that subtree survives those re-renders.
+
+Position math:
+
+- Overlay's `top` = bottom edge of the last always-visible top-nav element (the "More" or last `sidebar-nav-item` link). Computed via `getBoundingClientRect()` on that element.
+- Overlay's `left` = `nav.getBoundingClientRect().left` (matches sidebar's left edge).
+- Overlay's `width` = `nav.getBoundingClientRect().width` (matches sidebar's width).
+- Overlay's `bottom` = `0` or matches `nav.getBoundingClientRect().bottom`.
+
+A `ResizeObserver` on `<nav>` updates these values when the sidebar collapses or the viewport resizes.
+
+### What we do NOT do
+
+- We do NOT inject our panel into `<nav>`'s DOM as a child element.
+- We do NOT use `display: none` on claude.ai's chat list. The chat list stays in its normal layout flow; we render over it with z-index. (The Unsorted virtual folder still queries `<nav>` for chat anchors to populate itself, so the chat list's DOM presence matters even when visually covered.)
+- We do NOT replace `<nav>` or any of its existing children.
+
+The selectors module (`src/lib/selectors.js`) exports `navBlock` and `newChatButton` as the v0.2 anchors for this overlay positioning logic. The actual overlay implementation lands in v0.2 commit 5 (folder panel).
+
+### Folder strip in default mode
+
+The thin folder strip in default mode is also a `position: fixed` overlay, anchored to the viewport's left edge with `left: 0` rather than computed from `<nav>`. Reasoning: when the sidebar collapses or hides, the strip should remain visible at the viewport edge. Implementation lands in v0.2 commit 4.
+
+## v0.2 recon checklist
+
+These are the recon items that v0.2 implementation commits depend on. Each is verified once per fresh claude.ai DOM and the result is captured in this file. Re-run if the surface breaks during testing.
+
+- [ ] **`<nav>` element resolves.** Sanity check before any v0.2 work: `document.querySelector('nav')` returns the sidebar root. Pre-implementation baseline.
+
+- [ ] **Chat anchor selector resolves.** Sanity check that the v0.1 selectors still match: `document.querySelectorAll('a[href^="/chat/"][data-dd-action-name="sidebar-chat-item"]').length > 0`. Pre-implementation baseline.
+
+- [ ] **Synthetic-click triggers SPA navigation.** Verify that programmatic `.click()` on an existing chat anchor navigates without a full page reload. Test from console:
+
+  ```js
+  const a = document.querySelector('a[href^="/chat/"]');
+  console.log('Before click, location:', location.pathname);
+  a.click();
+  setTimeout(() => console.log('After click, location:', location.pathname), 100);
+  ```
+
+  Page should change route without reloading. Required by v0.2 commit 5 (folder panel chat-row click handler).
+
+- [ ] **dragstart not preempted by claude.ai's React handler.** Verify that native HTML5 DnD initiates from a chat anchor. Test from console:
+
+  ```js
+  const a = document.querySelector('a[href^="/chat/"][data-dd-action-name="sidebar-chat-item"]');
+  let testFired = false;
+  const listener = () => { testFired = true; };
+  a.addEventListener('dragstart', listener);
+  const event = new DragEvent('dragstart', { bubbles: true, cancelable: true });
+  a.dispatchEvent(event);
+  console.log('Our handler fired:', testFired);
+  console.log('Default prevented:', event.defaultPrevented);
+  a.removeEventListener('dragstart', listener);
+  ```
+
+  If `defaultPrevented === true`, claude.ai is blocking native drag and v0.2 commit 6 needs an alternative drag mechanism (custom drag handle, long-press detection, modifier-key drag). Required by v0.2 commit 6 (drag-and-drop coordination).
+
+- [ ] **Overlay viability.** Verify that a `position: fixed` element rendered over `<nav>` does not cause:
+  - Layout shift in claude.ai's content
+  - Clicks passing through to nav elements underneath
+  - Scroll trapping (sidebar scroll should still work when overlay is dismissed)
+
+  Quick test: inject a styled `<div style="position:fixed;top:80px;left:0;width:260px;height:300px;background:rgba(255,0,0,0.3);z-index:9999"></div>` via DevTools, observe behavior. Required by v0.2 commits 4 and 5.
+
+- [ ] **Off-screen anchor reachability.** Verify what happens when a chat scrolls out of `<nav>`'s visible window. Does claude.ai unmount the anchor (virtualized list), or just scroll it (full DOM)? Test by scrolling the sidebar and checking `document.querySelectorAll('a[href^="/chat/"]').length` against expected count. If virtualized, synthetic `.click()` only works for currently-mounted anchors; v0.2 commit 5's chat-row click handler needs `location.href` fallback for unmounted chats.
 
 ## All chats page (v0.2 reference, not implemented in v0.1)
 
