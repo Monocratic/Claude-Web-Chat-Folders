@@ -2,15 +2,29 @@
 
 Folder organization for claude.ai chats. Local storage only, no API access, no telemetry. Chromium-based browsers (Chrome, Vivaldi, Edge, Brave). Firefox not supported.
 
-The extension adds a toolbar popup for managing folders, and a "Add chat to folder" item to the browser's right-click menu when you right-click a chat link on claude.ai. Data lives in `chrome.storage.local`. JSON export and import is the only data movement, and it is always user-initiated.
+The extension adds a toolbar popup for managing folders and an in-page UI on claude.ai (folder strip, folder panel, styled context menus on chats and folders, in-page settings overlay). Data lives in `chrome.storage.local`. JSON export and import is the only data movement, and it is always user-initiated.
 
 ## Usage
 
-**To assign a chat to a folder:** right-click the chat link in claude.ai's sidebar, hover "Add chat to folder", click the folder name. The assignment is immediate and persists locally.
+**In-page folder strip (default mode):** a thin vertical strip on the left edge of claude.ai shows your pinned folders as colored swatches. Drag a chat from the sidebar onto a swatch to assign it.
 
-**To create or manage folders:** click the extension icon in your toolbar. The popup lets you create folders, edit names/colors/icons, pin folders, drag-reorder, view chats inside a folder, change settings, and import/export your data.
+**Folder panel (organize mode):** click the panel toggle in the strip header to open a full folder tree overlay over the sidebar. Lets you see all folders nested, drag chats between folders, drag folders to nest them, search across folders and chats, and run auto-organize.
 
-**No folders yet?** The right-click menu's first item links to the popup so you can set up.
+**Right-click any chat:** a styled in-page menu replaces the browser-native menu. Add the chat to any folder, remove it from a folder, open it, or open in a new tab. Available on chats in claude.ai's own sidebar and in the folder panel.
+
+**Right-click any folder (panel):** a styled context menu opens with Edit, Pin/Unpin, Add child folder, and Delete.
+
+**Folder editor:** click the `+` button in the panel header to create a folder, or right-click a folder and choose Edit. The modal lets you set name, parent (for nesting), color, emoji icon, and description.
+
+**Auto-organize:** in the folder panel, click the lightning bolt icon. Chats whose titles match a folder name (by default a substring match, configurable in settings) are suggested under those folders with an amber `?` badge. Click the row to confirm assignment, click the `✕` to dismiss.
+
+**Sync (`/recents` enumeration):** claude.ai's sidebar only renders ~30 chats at a time. Click the sync icon in the panel header to load `/recents` in a hidden iframe, auto-click "Show more" until exhausted, and cache every chat title and UUID locally. The Unsorted node then unions sidebar-rendered chats with the cache.
+
+**Settings overlay:** click the cog in the panel header to open settings as an in-page overlay. Includes theme picker (live-applies across all in-page surfaces), default folder color, density, reduce motion, view mode, strip cap, auto-organize match mode, search toggle, auto backup, JSON export and import.
+
+**Toolbar popup:** click the extension icon. Same folder-management surface as the panel; kept for users who prefer a popup workflow.
+
+**No folders yet?** The strip toggle, the panel header, and the chat context menu all open the in-page settings overlay where you can create folders.
 
 ## Install (unpacked from source)
 
@@ -77,12 +91,12 @@ When the branch advances and you want the latest code:
 
 ## Run the storage tests
 
-The test page exercises 32 cases covering schema validation, race conditions on parallel writes, idempotency, MRU caps, import format validation, subscription firing, and storage byte counting.
+The test page exercises 52 cases covering schema validation, race conditions on parallel writes, idempotency, MRU caps, import format validation, subscription firing, and storage byte counting.
 
 1. Open the test page URL from the install section.
 2. Click **Back up current state**. A timestamped JSON file downloads to your Downloads folder. Keep it; the test run wipes storage.
 3. Click **Run tests (auto-backs up first, then wipes)**. A second pre-test backup downloads, you confirm the wipe, and the test runner steps through every case.
-4. Expected result: `32 passed, 0 failed of 32`.
+4. Expected result: `52 passed, 0 failed of 52`.
 5. To restore your folders, use the popup's settings panel: **Import** and select the backup JSON.
 
 ## Browser support
@@ -104,8 +118,9 @@ Firefox uses a different MV3 implementation and a different add-on ID mechanism.
 - The extension does not call Anthropic's API.
 - The extension does not include analytics, error reporting, or any other telemetry.
 - The only data movement is JSON export and import, both user-initiated through the settings panel. Exports download to your local Downloads folder. Imports read a file you select from your local disk.
-- When you right-click a chat link on claude.ai, the browser passes the link URL to the extension's context menu handler. That URL is the only data the extension sees about a chat. The extension does not read claude.ai's page content. It does not modify claude.ai's page content. It does not read chat content.
-- The host permission `https://claude.ai/*` scopes the right-click context menu to claude.ai. The extension does not run a content script on the page.
+- The extension runs a content script on `https://claude.ai/*` to render the folder strip, folder panel, settings overlay, and styled in-page context menus. It reads only what is needed: chat link URLs (to extract UUIDs), the visible link text shown in claude.ai's sidebar (to populate the title cache), and the DOM of `claude.ai/recents` when you click the sync button (to enumerate chat UUIDs and titles). It does not read chat message content. It does not modify claude.ai's page DOM; in-page surfaces are floated over the sidebar without touching its tree.
+- The host permission `https://claude.ai/*` scopes all of the above to claude.ai.
+- The sync feature loads `claude.ai/recents` in a hidden same-origin iframe and clicks the "Show more" button on that page until exhausted, then reads the rendered chat anchors. No network requests are made to anything other than claude.ai itself, which the user is already signed into.
 
 ## Issues and contributions
 

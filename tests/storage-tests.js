@@ -60,7 +60,7 @@ async function assertThrows(fn, msgPart, label) {
 const tests = [
   ['empty storage returns default state', async () => {
     const s = await S.loadState();
-    assertEqual(s.version, 1, 'version should be 1');
+    assertEqual(s.version, 3, 'version should be 3');
     assertEqual(s.folders, [], 'folders should be empty');
     assertEqual(s.assignments, {}, 'assignments should be empty');
     assertEqual(s.itemTitles, {}, 'itemTitles should be empty');
@@ -274,9 +274,9 @@ const tests = [
     const json = await S.exportToJson();
     const parsed = JSON.parse(json);
     assertEqual(parsed.exportedBy, 'cwcf', 'exportedBy stamped');
-    assertEqual(parsed.appVersion, '0.1.0', 'appVersion stamped');
+    assertEqual(parsed.appVersion, '0.2.0', 'appVersion stamped');
     assertTrue(typeof parsed.exportedAt === 'string', 'exportedAt is string');
-    assertEqual(parsed.version, 1, 'schema version stamped');
+    assertEqual(parsed.version, 3, 'schema version stamped');
     assertTrue(Array.isArray(parsed.folders), 'folders array present');
     assertEqual(parsed.settings, undefined, 'settings not exported');
   }],
@@ -417,6 +417,292 @@ const tests = [
     unsub();
     assertTrue(calls >= 1, 'subscriber fired at least once');
     assertTrue(lastNew && Array.isArray(lastNew.folders), 'received state shape');
+  }],
+
+  // ---------- Schema v2 migration ----------
+
+  ['createFolder produces v2 fields by default', async () => {
+    const f = await S.createFolder('Modern');
+    assertEqual(f.parentId, null, 'parentId defaults null');
+    assertEqual(f.collapsed, false, 'collapsed defaults false');
+    assertEqual(f.autoAssignKeywords, [], 'autoAssignKeywords defaults []');
+  }],
+
+  ['default state declares schema version 3', async () => {
+    const s = await S.loadState();
+    assertEqual(s.version, 3, 'version is 3');
+    assertEqual(s.settings.viewMode, 'default', 'viewMode default');
+    assertEqual(s.settings.stripCap, 6, 'stripCap default');
+    assertEqual(s.settings.stripOverflowBehavior, 'indicator', 'overflow default');
+    assertEqual(s.settings.autoOrganizeMatchMode, 'contains', 'matchMode default');
+    assertEqual(s.settings.unsortedCollapsed, false, 'unsortedCollapsed default');
+    assertEqual(s.chatCache.lastSyncedAt, null, 'chatCache lastSyncedAt default');
+    assertEqual(s.chatCache.chats, {}, 'chatCache chats default');
+  }],
+
+  ['v1 state imported as a v1 export migrates to v2 on next load', async () => {
+    // Plant a synthetic v1 export and round-trip it through importFromJson.
+    // After import, loadState should return v2-shaped state.
+    const v1Export = {
+      exportedBy: 'cwcf',
+      exportedAt: new Date().toISOString(),
+      appVersion: '0.1.0',
+      version: 1,
+      folders: [{
+        id: 'f_legacy', name: 'Legacy', color: '#aabbcc',
+        createdAt: 1000, pinned: true, sortOrder: 0,
+        icon: null, description: 'pre-v0.2', lastUsedAt: null
+        // no parentId, collapsed, autoAssignKeywords - v1 didn't have these
+      }],
+      assignments: {},
+      itemTitles: {}
+    };
+    await S.importFromJson(JSON.stringify(v1Export), 'replace');
+    const state = await S.loadState();
+    assertEqual(state.folders.length, 1, 'folder imported');
+    const f = state.folders[0];
+    assertEqual(f.name, 'Legacy', 'original data preserved');
+    assertEqual(f.parentId, null, 'parentId backfilled to null');
+    assertEqual(f.collapsed, false, 'collapsed backfilled to false');
+    assertEqual(f.autoAssignKeywords, [], 'autoAssignKeywords backfilled to []');
+    assertEqual(state.version, 3, 'state migrated through v2 to v3');
+    assertEqual(state.chatCache.lastSyncedAt, null, 'chatCache populated by v3 migration');
+    assertEqual(state.settings.unsortedCollapsed, false, 'unsortedCollapsed populated by v3 migration');
+  }],
+
+  ['v2 state migrates to v3 on next load', async () => {
+    // Plant a synthetic v2-shape state directly into chrome.storage.local
+    // (bypassing setCachedChats which would re-stamp the version).
+    const v2State = {
+      version: 2,
+      folders: [{
+        id: 'f_v2', name: 'V2 folder', color: '#123456', createdAt: 1000,
+        pinned: false, sortOrder: 0, icon: null, description: null,
+        lastUsedAt: null, parentId: null, collapsed: false,
+        autoAssignKeywords: []
+      }],
+      assignments: {},
+      itemTitles: {},
+      settings: {
+        defaultFolderColor: '#3b82f6',
+        activeTheme: 'neon-purple',
+        customTheme: {},
+        density: 'comfortable',
+        reduceMotion: false,
+        showChatCounts: true,
+        quickAssignFolderId: null,
+        autoBackup: 'off',
+        confirmFolderDelete: true,
+        recentColors: [],
+        recentEmojis: [],
+        searchEnabled: true,
+        viewMode: 'default',
+        stripCap: 6,
+        stripOverflowBehavior: 'indicator',
+        autoOrganizeMatchMode: 'contains'
+        // no unsortedCollapsed - v2 didn't have it
+      },
+      lastModified: Date.now()
+    };
+    await chrome.storage.local.set({ [S.STORAGE_KEY]: v2State });
+    const state = await S.loadState();
+    assertEqual(state.version, 3, 'state migrated to v3');
+    assertEqual(state.folders.length, 1, 'folder preserved');
+    assertEqual(state.folders[0].name, 'V2 folder', 'folder data preserved');
+    assertEqual(state.settings.unsortedCollapsed, false, 'unsortedCollapsed defaulted');
+    assertTrue(state.chatCache && state.chatCache.lastSyncedAt === null, 'chatCache initialized');
+    assertEqual(state.chatCache.chats, {}, 'chatCache chats empty');
+  }],
+
+  ['migration is idempotent on already-v3 state', async () => {
+    await S.createFolder('A');
+    const first = await S.loadState();
+    const second = await S.loadState();
+    assertEqual(first.version, 3, 'first read is v3');
+    assertEqual(second.version, 3, 'second read also v3');
+    assertEqual(first.folders[0].id, second.folders[0].id, 'folder identity stable');
+    assertEqual(first.settings.viewMode, second.settings.viewMode, 'settings stable');
+  }],
+
+  // ---------- Settings validation for v2 fields ----------
+
+  ['v2/v3 settings reject invalid values', async () => {
+    await assertThrows(() => S.updateSettings({ viewMode: 'turbo' }), 'Invalid value', 'bad viewMode');
+    await assertThrows(() => S.updateSettings({ stripCap: 0 }), 'Invalid value', 'stripCap below min');
+    await assertThrows(() => S.updateSettings({ stripCap: 51 }), 'Invalid value', 'stripCap above max');
+    await assertThrows(() => S.updateSettings({ stripCap: 3.5 }), 'Invalid value', 'stripCap non-integer');
+    await assertThrows(() => S.updateSettings({ stripOverflowBehavior: 'wrap' }), 'Invalid value', 'bad overflow');
+    await assertThrows(() => S.updateSettings({ autoOrganizeMatchMode: 'fuzzy' }), 'Invalid value', 'bad match mode');
+    await assertThrows(() => S.updateSettings({ unsortedCollapsed: 'maybe' }), 'Invalid value', 'unsortedCollapsed non-boolean');
+    await assertThrows(() => S.updateSettings({ unsortedCollapsed: 1 }), 'Invalid value', 'unsortedCollapsed numeric');
+  }],
+
+  ['v2/v3 settings accept valid values', async () => {
+    await S.updateSettings({ viewMode: 'organize', stripCap: 12, stripOverflowBehavior: 'scroll', autoOrganizeMatchMode: 'exact', unsortedCollapsed: true });
+    const s = await S.loadState();
+    assertEqual(s.settings.viewMode, 'organize', 'viewMode set');
+    assertEqual(s.settings.stripCap, 12, 'stripCap set');
+    assertEqual(s.settings.stripOverflowBehavior, 'scroll', 'overflow set');
+    assertEqual(s.settings.autoOrganizeMatchMode, 'exact', 'matchMode set');
+    assertEqual(s.settings.unsortedCollapsed, true, 'unsortedCollapsed true');
+    await S.updateSettings({ unsortedCollapsed: false });
+    const s2 = await S.loadState();
+    assertEqual(s2.settings.unsortedCollapsed, false, 'unsortedCollapsed false');
+  }],
+
+  // ---------- isAncestor cycle detection ----------
+
+  ['isAncestor detects direct parent, transitive ancestor, sibling, unrelated', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    const c = await S.createFolder('C');
+    const d = await S.createFolder('D');
+    await S.moveToParent(b.id, a.id);  // A -> B
+    await S.moveToParent(c.id, b.id);  // A -> B -> C
+    const state = await S.loadState();
+    assertTrue(S.isAncestor(state, a.id, b.id), 'A is ancestor of B (direct)');
+    assertTrue(S.isAncestor(state, a.id, c.id), 'A is ancestor of C (transitive)');
+    assertTrue(!S.isAncestor(state, b.id, a.id), 'B is not ancestor of A (reverse)');
+    assertTrue(!S.isAncestor(state, d.id, c.id), 'D is not ancestor of C (sibling/unrelated)');
+    assertTrue(S.isAncestor(state, a.id, a.id), 'self-ancestor returns true (self-cycle guard)');
+  }],
+
+  // ---------- Recursive folder helpers ----------
+
+  ['getRootFolders returns parentId-null only', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    const c = await S.createFolder('C');
+    await S.moveToParent(b.id, a.id);
+    const state = await S.loadState();
+    const roots = await S.getRootFolders(state);
+    const rootNames = roots.map(f => f.name).sort();
+    assertEqual(rootNames, ['A', 'C'], 'A and C are roots, B is nested');
+  }],
+
+  ['getChildFolders returns direct children only', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    const c = await S.createFolder('C');
+    const d = await S.createFolder('D');
+    await S.moveToParent(b.id, a.id);
+    await S.moveToParent(c.id, a.id);
+    await S.moveToParent(d.id, b.id);
+    const state = await S.loadState();
+    const children = await S.getChildFolders(state, a.id);
+    const childNames = children.map(f => f.name).sort();
+    assertEqual(childNames, ['B', 'C'], 'A has direct children B and C, not D (transitive)');
+  }],
+
+  ['getDescendantFolders returns all descendants recursively', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    const c = await S.createFolder('C');
+    const d = await S.createFolder('D');
+    await S.moveToParent(b.id, a.id);
+    await S.moveToParent(c.id, a.id);
+    await S.moveToParent(d.id, b.id);
+    const state = await S.loadState();
+    const descendants = await S.getDescendantFolders(state, a.id);
+    const names = descendants.map(f => f.name).sort();
+    assertEqual(names, ['B', 'C', 'D'], 'A descendants include B, C, D');
+  }],
+
+  // ---------- moveToParent ----------
+
+  ['moveToParent succeeds for valid root-to-child reparent', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    await S.moveToParent(b.id, a.id);
+    const state = await S.loadState();
+    const moved = state.folders.find(f => f.id === b.id);
+    assertEqual(moved.parentId, a.id, 'B is now child of A');
+  }],
+
+  ['moveToParent accepts null to un-nest', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    await S.moveToParent(b.id, a.id);
+    await S.moveToParent(b.id, null);
+    const state = await S.loadState();
+    const moved = state.folders.find(f => f.id === b.id);
+    assertEqual(moved.parentId, null, 'B is back to root');
+  }],
+
+  ['moveToParent rejects non-existent target parent', async () => {
+    const a = await S.createFolder('A');
+    await assertThrows(() => S.moveToParent(a.id, 'f_doesnt_exist'), 'not found', 'rejects bad parent');
+  }],
+
+  ['moveToParent rejects self-as-parent', async () => {
+    const a = await S.createFolder('A');
+    await assertThrows(() => S.moveToParent(a.id, a.id), 'own parent', 'rejects self-parent');
+  }],
+
+  ['moveToParent rejects cycle (move parent under its own descendant)', async () => {
+    const a = await S.createFolder('A');
+    const b = await S.createFolder('B');
+    const c = await S.createFolder('C');
+    await S.moveToParent(b.id, a.id);  // A -> B
+    await S.moveToParent(c.id, b.id);  // A -> B -> C
+    // Now try to move A under C (would create A -> B -> C -> A cycle)
+    await assertThrows(() => S.moveToParent(a.id, c.id), 'cycle', 'rejects descendant-as-parent');
+  }],
+
+  // ---------- chatCache (v3) ----------
+
+  ['setCachedChats round-trips', async () => {
+    const before = await S.getChatCache();
+    assertEqual(before.lastSyncedAt, null, 'cache empty initially');
+    assertEqual(before.chats, {}, 'no chats initially');
+    const result = await S.setCachedChats([
+      { uuid: '11111111-1111-1111-1111-111111111111', title: 'First chat' },
+      { uuid: '22222222-2222-2222-2222-222222222222', title: 'Second chat' }
+    ]);
+    assertTrue(typeof result.lastSyncedAt === 'number', 'lastSyncedAt is a timestamp');
+    assertEqual(Object.keys(result.chats).length, 2, 'two chats cached');
+    const after = await S.getChatCache();
+    assertEqual(after.chats['11111111-1111-1111-1111-111111111111'].title, 'First chat', 'first title round-trips');
+    assertEqual(after.chats['22222222-2222-2222-2222-222222222222'].title, 'Second chat', 'second title round-trips');
+  }],
+
+  ['setCachedChats overwrites previous cache', async () => {
+    await S.setCachedChats([
+      { uuid: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', title: 'Old chat' }
+    ]);
+    await S.setCachedChats([
+      { uuid: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', title: 'New chat' }
+    ]);
+    const cache = await S.getChatCache();
+    assertEqual(Object.keys(cache.chats).length, 1, 'second call replaces first, not merges');
+    assertEqual(cache.chats['bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'].title, 'New chat', 'new chat in cache');
+    assertEqual(cache.chats['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'], undefined, 'old chat dropped');
+  }],
+
+  ['setCachedChats drops invalid entries', async () => {
+    await S.setCachedChats([
+      { uuid: '33333333-3333-3333-3333-333333333333', title: 'Valid' },
+      { uuid: '', title: 'Empty uuid' },
+      { uuid: '44444444-4444-4444-4444-444444444444', title: null },
+      null,
+      { foo: 'bar' },
+      undefined,
+      { uuid: '55555555-5555-5555-5555-555555555555', title: 'Also valid' }
+    ]);
+    const cache = await S.getChatCache();
+    assertEqual(Object.keys(cache.chats).length, 2, 'only valid entries survive');
+    assertTrue(!!cache.chats['33333333-3333-3333-3333-333333333333'], 'first valid kept');
+    assertTrue(!!cache.chats['55555555-5555-5555-5555-555555555555'], 'second valid kept');
+  }],
+
+  ['clearChatCache resets cache', async () => {
+    await S.setCachedChats([
+      { uuid: '66666666-6666-6666-6666-666666666666', title: 'Pre-clear' }
+    ]);
+    await S.clearChatCache();
+    const cache = await S.getChatCache();
+    assertEqual(cache.lastSyncedAt, null, 'lastSyncedAt cleared');
+    assertEqual(cache.chats, {}, 'chats cleared');
   }]
 ];
 

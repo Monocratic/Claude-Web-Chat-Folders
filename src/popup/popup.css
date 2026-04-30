@@ -334,6 +334,48 @@ body.cwcf-ready {
   font-size: 11px;
 }
 
+.folder-row__arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.folder-row__arrow:hover {
+  color: var(--text-primary);
+}
+
+.folder-row--nested {
+  border-left-style: dashed;
+}
+
+.folder-row--nested:hover {
+  border-left-color: var(--accent-primary);
+}
+
+.settings-row input[type="number"] {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 4px var(--space-2);
+  font: inherit;
+  width: 60px;
+}
+
+.settings-row input[type="number"]:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
 /* ----- Detail / settings views ----- */
 
 .detail-header {

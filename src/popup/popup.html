@@ -118,6 +118,39 @@
       </section>
 
       <section class="settings-group">
+        <h3>In-page view</h3>
+        <label class="settings-row">
+          <span class="settings-row__label">Default view mode</span>
+          <select id="setting-view-mode">
+            <option value="default">Strip (default)</option>
+            <option value="organize">Folder panel</option>
+          </select>
+        </label>
+        <label class="settings-row">
+          <span class="settings-row__label">Strip folder cap</span>
+          <input type="number" id="setting-strip-cap" min="1" max="50" step="1">
+        </label>
+        <label class="settings-row">
+          <span class="settings-row__label">Strip overflow</span>
+          <select id="setting-strip-overflow">
+            <option value="indicator">Indicator (+N)</option>
+            <option value="scroll">Scrollable</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="settings-group">
+        <h3>Auto-organize</h3>
+        <label class="settings-row">
+          <span class="settings-row__label">Match mode</span>
+          <select id="setting-auto-organize-mode">
+            <option value="contains">Title contains folder name</option>
+            <option value="exact">Title equals folder name</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="settings-group">
         <h3>Data</h3>
         <div class="settings-row">
           <button class="secondary-btn" id="btn-export" type="button">Export</button>

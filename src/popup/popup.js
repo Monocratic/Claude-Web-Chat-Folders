@@ -26,7 +26,19 @@ async function init() {
     if (e.persisted) reloadAndRender();
   });
 
+  routeFromHash();
+
   document.body.classList.add('cwcf-ready');
+}
+
+// If the popup was opened with #settings (from the in-page cog button via
+// chrome.tabs.create), jump straight to the settings view. Other hashes
+// reserved for v0.3 (could route to a folder detail by id, etc).
+function routeFromHash() {
+  const hash = window.location.hash;
+  if (hash === '#settings') {
+    showView('settings');
+  }
 }
 
 function applyCurrentTheme() {
