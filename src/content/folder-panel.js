@@ -150,6 +150,8 @@ function buildPanelDom() {
 }
 
 function buildUnsortedNode(folders, assignments, itemTitles) {
+  const collapsed = !!(mainState?.loaded?.settings?.unsortedCollapsed);
+
   const node = document.createElement('div');
   node.className = 'cwcf-panel__folder cwcf-panel__folder--unsorted';
   node.setAttribute('role', 'treeitem');
@@ -158,8 +160,10 @@ function buildUnsortedNode(folders, assignments, itemTitles) {
   row.className = 'cwcf-panel__folder-row';
 
   const arrow = document.createElement('span');
-  arrow.className = 'cwcf-panel__arrow cwcf-panel__arrow--expanded';
-  arrow.textContent = '▾';
+  arrow.className = collapsed
+    ? 'cwcf-panel__arrow cwcf-panel__arrow--collapsed'
+    : 'cwcf-panel__arrow cwcf-panel__arrow--expanded';
+  arrow.textContent = collapsed ? '▸' : '▾';
   row.appendChild(arrow);
 
   const swatch = document.createElement('span');
@@ -181,17 +185,35 @@ function buildUnsortedNode(folders, assignments, itemTitles) {
   row.appendChild(count);
 
   attachUnsortedDropTarget(row);
+  // Click anywhere on the Unsorted row toggles collapse. Drop handlers
+  // already preventDefault on dragover/drop, so click won't fire from
+  // a drag operation.
+  row.addEventListener('click', (e) => {
+    if (e.defaultPrevented) return;
+    toggleUnsortedCollapse();
+  });
   node.appendChild(row);
 
-  const itemList = document.createElement('div');
-  itemList.className = 'cwcf-panel__items';
-  for (const itemRef of unsortedItems) {
-    const itemEl = buildItemRow(itemRef, itemTitles, null);
-    if (itemEl) itemList.appendChild(itemEl);
+  if (!collapsed) {
+    const itemList = document.createElement('div');
+    itemList.className = 'cwcf-panel__items';
+    for (const itemRef of unsortedItems) {
+      const itemEl = buildItemRow(itemRef, itemTitles, null);
+      if (itemEl) itemList.appendChild(itemEl);
+    }
+    node.appendChild(itemList);
   }
-  node.appendChild(itemList);
 
   return node;
+}
+
+async function toggleUnsortedCollapse() {
+  try {
+    const current = !!(mainState?.loaded?.settings?.unsortedCollapsed);
+    await S.updateSettings({ unsortedCollapsed: !current });
+  } catch (err) {
+    console.error('[CWCF] toggleUnsortedCollapse failed', err);
+  }
 }
 
 function collectUnsortedItems(assignments) {
