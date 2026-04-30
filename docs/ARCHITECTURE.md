@@ -296,6 +296,15 @@ These items moved from "deferred" to "shipped" with the v0.2 visual layer:
 
 The `chrome.contextMenus` registration was removed in v0.2 along with the `contextMenus` permission. The in-page chat menu fully replaces it. `src/background.js` now only forwards a popup→content "open settings overlay" message; if the popup is removed, the service worker can go too.
 
+## Known limitations (v0.2)
+
+These are accepted limitations, not deferred work. The right fix would require a different architecture, and the workaround listed below is good enough that we are not pursuing it for v0.2.
+
+- **Cross-source drag from claude.ai's sidebar/recents anchors does not work reliably.** The native HTML5 drag lifecycle on claude.ai's chat anchors is owned by their React tree; Tailwind classes like `disabled:pointer-events-none`, `select-none`, and `can-focus` interact with React state in ways that prevent the OS-level drag from initiating consistently. `src/content/drag-handlers.js`'s `runDragPreemptionTest` already logs `'[CWCF] dragstart on chat anchor was defaultPrevented…'` when this happens, so the diagnostic is visible in the console.
+  - **Within-panel drag works.** Panel chat rows are our own `<div data-item-ref="…" draggable>` elements, fully under our control. Drag chat → folder, drag folder → folder, drag folder → root all behave as expected.
+  - **The primary cross-source assignment workflow is right-click.** The in-page chat context menu (`src/content/chat-context.js`) attaches at document level in capture phase and matches both panel rows (via `data-item-ref^="chat:"`) and any sidebar/recents `<a href="/chat/…">`. Right-click → Add to folder works regardless of where the chat is rendered.
+  - The strip and panel drop handlers retain the `text/uri-list` / `text/plain` URL fallback, so any browser/state combination where claude.ai's drag does happen to fire still produces a correct assignment. The fallback path logs a warning so the React-preempt scenario is visible when it occurs.
+
 ## Deferred features
 
 Schema fields exist for these where relevant. UI lands in v0.3 or later.
