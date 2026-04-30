@@ -97,19 +97,50 @@ async function waitForInitialCells(iframe) {
 
 async function clickShowMoreUntilDone(iframe) {
   const doc = iframe.contentDocument;
+  const win = iframe.contentWindow;
   let clicks = 0;
-  let lastCount = collectCells(doc).length;
+  let lastCount = countCellsForGrowth(doc);
   emit({ phase: 'expanding', count: lastCount });
 
   while (clicks < SHOW_MORE_MAX_CLICKS) {
     const btn = findShowMoreButton(doc);
     if (!btn) break;
 
-    const beforeCount = collectCells(doc).length;
-    btn.click();
+    const beforeNarrow = countCellsNarrow(doc);
+    const beforeBroad = countCellsBroad(doc);
+    const beforeCount = Math.max(beforeNarrow, beforeBroad);
+
+    // dispatchEvent over .click() because btn.click() can hit edge cases in
+    // React's event delegation when the click target is inside an iframe.
+    // view: iframe.contentWindow scopes the event to the iframe's abstract
+    // view; otherwise the event identifies as parent-window-originated and
+    // some React handlers reject it.
+    btn.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      view: win
+    }));
     clicks++;
 
     const newCount = await waitForGrowth(doc, beforeCount);
+    const afterNarrow = countCellsNarrow(doc);
+    const afterBroad = countCellsBroad(doc);
+    const buttonStillPresent = !!findShowMoreButton(doc);
+
+    // Per-iteration diagnostic. Sync is user-triggered, fires <50 times max
+    // per click, cost is nil. Keeps the next debugging session unblocked
+    // when /recents DOM drifts.
+    console.log('[CWCF sync]', {
+      iteration: clicks,
+      beforeNarrow,
+      beforeBroad,
+      afterNarrow,
+      afterBroad,
+      newCount,
+      buttonStillPresent,
+      buttonText: (btn.textContent || '').trim()
+    });
+
     if (newCount > lastCount) {
       lastCount = newCount;
       emit({ phase: 'expanding', count: lastCount });
@@ -121,19 +152,19 @@ async function clickShowMoreUntilDone(iframe) {
   }
 
   await waitForSettle(doc);
-  return collectCells(doc).length;
+  return countCellsForGrowth(doc);
 }
 
 async function waitForGrowth(doc, beforeCount) {
   const start = Date.now();
   let count = beforeCount;
   while (Date.now() - start < PER_CLICK_TIMEOUT_MS) {
-    count = collectCells(doc).length;
+    count = countCellsForGrowth(doc);
     if (count > beforeCount) {
       const growStop = Date.now();
       while (Date.now() - growStop < PER_CLICK_PLATEAU_MS) {
         await sleep(POLL_INTERVAL_MS);
-        const next = collectCells(doc).length;
+        const next = countCellsForGrowth(doc);
         if (next > count) {
           count = next;
           break;
@@ -147,11 +178,11 @@ async function waitForGrowth(doc, beforeCount) {
 }
 
 async function waitForSettle(doc) {
-  let last = collectCells(doc).length;
+  let last = countCellsForGrowth(doc);
   let stable = 0;
   while (stable < SETTLE_DELAY_MS) {
     await sleep(POLL_INTERVAL_MS);
-    const cur = collectCells(doc).length;
+    const cur = countCellsForGrowth(doc);
     if (cur !== last) {
       last = cur;
       stable = 0;
@@ -159,6 +190,25 @@ async function waitForSettle(doc) {
       stable += POLL_INTERVAL_MS;
     }
   }
+}
+
+// Growth detection uses the max of broad and narrow selectors. The broad
+// selector (a[href^="/chat/"]) catches any new chat anchors regardless of
+// data-dd-action-name drift, but it also includes the iframe-rendered
+// sidebar which overlaps with the recents grid. The narrow selector
+// (conversation-cell) catches grid cells precisely but breaks if claude.ai
+// drops the data attribute. Max-of-both is robust to either failure mode
+// without committing to a single theory.
+function countCellsForGrowth(doc) {
+  return Math.max(countCellsNarrow(doc), countCellsBroad(doc));
+}
+
+function countCellsNarrow(doc) {
+  return doc.querySelectorAll(SELECTORS.recentsConversationCell).length;
+}
+
+function countCellsBroad(doc) {
+  return doc.querySelectorAll('a[href^="/chat/"]').length;
 }
 
 function findShowMoreButton(doc) {
