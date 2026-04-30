@@ -93,6 +93,15 @@ function buildPanelDom() {
   organizeBtn.addEventListener('click', runAutoOrganize);
   headerBtns.appendChild(organizeBtn);
 
+  const syncBtn = document.createElement('button');
+  syncBtn.type = 'button';
+  syncBtn.className = 'cwcf-panel__icon-btn';
+  syncBtn.title = 'Sync chat list from /recents (catches chats not in sidebar)';
+  syncBtn.setAttribute('aria-label', 'Sync chats');
+  syncBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8a5 5 0 018.66-3.4M13 8a5 5 0 01-8.66 3.4M11 2v3h-3M5 14v-3h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  syncBtn.addEventListener('click', () => handleSyncClick(syncBtn));
+  headerBtns.appendChild(syncBtn);
+
   const createBtn = document.createElement('button');
   createBtn.type = 'button';
   createBtn.className = 'cwcf-panel__icon-btn';
@@ -725,6 +734,32 @@ function dismissSuggestion(itemRef, currentParentFolderId) {
 function handleCreateFolder() {
   if (api && api.openFolderModal) {
     api.openFolderModal({ mode: 'create' });
+  }
+}
+
+let syncInFlight = false;
+
+async function handleSyncClick(btn) {
+  if (syncInFlight) return;
+  if (!api || !api.runSync) return;
+  syncInFlight = true;
+  btn.classList.add('cwcf-panel__icon-btn--busy');
+  btn.disabled = true;
+  const prevTitle = btn.title;
+  btn.title = 'Syncing…';
+  try {
+    const result = await api.runSync();
+    btn.title = `Synced ${result.count} chats`;
+    setTimeout(() => { btn.title = prevTitle; }, 3000);
+  } catch (err) {
+    console.error('[CWCF] sync failed', err);
+    btn.title = `Sync failed: ${err.message || err}`;
+    window.alert(`Sync failed: ${err.message || err}\n\nThis usually means claude.ai blocks iframe embedding of /recents.`);
+    setTimeout(() => { btn.title = prevTitle; }, 3000);
+  } finally {
+    syncInFlight = false;
+    btn.classList.remove('cwcf-panel__icon-btn--busy');
+    btn.disabled = false;
   }
 }
 

@@ -229,6 +229,20 @@
   outline-offset: 1px;
 }
 
+.cwcf-panel__icon-btn--busy {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.cwcf-panel__icon-btn--busy svg {
+  animation: cwcf-spin 1s linear infinite;
+}
+
+@keyframes cwcf-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .cwcf-panel__search {
   padding: 8px 12px;
   border-bottom: 1px solid rgba(167, 139, 250, 0.12);

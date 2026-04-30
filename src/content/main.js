@@ -16,7 +16,8 @@ const state = {
     panel: null,
     drag: null,
     settings: null,
-    folderModal: null
+    folderModal: null,
+    sync: null
   },
   titleCacheLastWrite: new Map()
 };
@@ -255,6 +256,13 @@ function getApi() {
       } catch (err) {
         console.error('[CWCF] failed to open settings overlay', err);
       }
+    },
+    runSync: async () => {
+      if (!state.modules.sync) {
+        const url = chrome.runtime.getURL('src/content/sync.js');
+        state.modules.sync = await import(url);
+      }
+      return state.modules.sync.runSync();
     },
     openFolderModal: async (options = {}) => {
       try {
