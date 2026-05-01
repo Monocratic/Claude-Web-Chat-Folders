@@ -748,15 +748,17 @@ function attachTreeAutoScroll(treeEl) {
     }
   }
 
-  // Explicit wheel handler. The tree already has overflow-y:auto, so
-  // wheel-to-scroll works natively in the no-drag state. During an active
-  // HTML5 drag some pages install document-level wheel handlers that
-  // suppress the default; this passive listener calls scrollBy so we are
-  // not at the mercy of those.
-  treeEl.addEventListener('wheel', (e) => {
+  // Wheel passthrough during drag. Document-level capture-phase so we
+  // catch wheel events regardless of cursor position (cursor often moves
+  // outside the panel during a drag) and regardless of any page-level
+  // wheel handlers that might intercept on bubble. passive:true so we
+  // can't preventDefault — but we don't need to, scrollBy alone moves
+  // the panel.
+  document.addEventListener('wheel', (e) => {
     if (!dragActive) return;
+    dndLog('wheel during drag', { deltaY: e.deltaY });
     treeEl.scrollBy(0, e.deltaY);
-  }, { passive: true });
+  }, { capture: true, passive: true });
 }
 
 function attachFolderDragSource(el, folderId) {
