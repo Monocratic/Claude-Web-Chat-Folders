@@ -703,6 +703,66 @@ const tests = [
     const cache = await S.getChatCache();
     assertEqual(cache.lastSyncedAt, null, 'lastSyncedAt cleared');
     assertEqual(cache.chats, {}, 'chats cleared');
+  }],
+
+  ['appendCachedChats merges into empty cache', async () => {
+    const result = await S.appendCachedChats([
+      { uuid: '77777777-7777-7777-7777-777777777777', title: 'Append A' },
+      { uuid: '88888888-8888-8888-8888-888888888888', title: 'Append B' }
+    ]);
+    assertEqual(Object.keys(result.chats).length, 2, 'two entries merged');
+    assertEqual(result.chats['77777777-7777-7777-7777-777777777777'].title, 'Append A', 'first title preserved');
+    assertTrue(typeof result.lastSyncedAt === 'number', 'lastSyncedAt stamped');
+  }],
+
+  ['appendCachedChats preserves prior entries while adding new ones', async () => {
+    await S.setCachedChats([
+      { uuid: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', title: 'Existing' }
+    ]);
+    await S.appendCachedChats([
+      { uuid: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', title: 'New' }
+    ]);
+    const cache = await S.getChatCache();
+    assertEqual(Object.keys(cache.chats).length, 2, 'union of prior + new');
+    assertEqual(cache.chats['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'].title, 'Existing', 'prior entry kept');
+    assertEqual(cache.chats['bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'].title, 'New', 'new entry added');
+  }],
+
+  ['appendCachedChats overwrites titles for existing uuids', async () => {
+    await S.setCachedChats([
+      { uuid: 'cccccccc-cccc-cccc-cccc-cccccccccccc', title: 'Old title' }
+    ]);
+    await S.appendCachedChats([
+      { uuid: 'cccccccc-cccc-cccc-cccc-cccccccccccc', title: 'Refreshed title' }
+    ]);
+    const cache = await S.getChatCache();
+    assertEqual(Object.keys(cache.chats).length, 1, 'still one entry');
+    assertEqual(cache.chats['cccccccc-cccc-cccc-cccc-cccccccccccc'].title, 'Refreshed title', 'title updated');
+  }],
+
+  ['appendCachedChats drops invalid entries silently', async () => {
+    await S.appendCachedChats([
+      { uuid: 'dddddddd-dddd-dddd-dddd-dddddddddddd', title: 'Valid' },
+      null,
+      { uuid: '', title: 'Empty UUID' },
+      { uuid: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', title: 42 },
+      { title: 'Missing UUID' }
+    ]);
+    const cache = await S.getChatCache();
+    assertEqual(Object.keys(cache.chats).length, 1, 'only valid kept');
+    assertTrue(!!cache.chats['dddddddd-dddd-dddd-dddd-dddddddddddd'], 'valid entry kept');
+  }],
+
+  ['appendCachedChats with empty input keeps prior cache untouched', async () => {
+    await S.setCachedChats([
+      { uuid: 'ffffffff-ffff-ffff-ffff-ffffffffffff', title: 'Should stay' }
+    ]);
+    const cacheBefore = await S.getChatCache();
+    const stampBefore = cacheBefore.lastSyncedAt;
+    await S.appendCachedChats([]);
+    const cacheAfter = await S.getChatCache();
+    assertEqual(Object.keys(cacheAfter.chats).length, 1, 'prior entry preserved');
+    assertEqual(cacheAfter.lastSyncedAt, stampBefore, 'lastSyncedAt unchanged when nothing merged');
   }]
 ];
 
