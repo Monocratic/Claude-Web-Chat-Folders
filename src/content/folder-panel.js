@@ -154,6 +154,7 @@ function buildPanelDom() {
   tree.className = 'cwcf-panel__tree';
   tree.setAttribute('role', 'tree');
   attachRootDropZone(tree);
+  attachTreeAutoScroll(tree);
   root.appendChild(tree);
 
   return root;
@@ -698,6 +699,64 @@ function attachRootDropZone(treeEl) {
       console.error('[CWCF] move-to-root failed', err);
     }
   });
+}
+
+// Auto-scroll the tree when a drag hovers near its top or bottom edge.
+// HTML5 native DnD doesn't auto-scroll containers; we drive it via rAF.
+// Also attaches an explicit wheel listener so the user can manually
+// scroll mid-drag — some browsers / page-level handlers swallow wheel
+// events while a drag is active.
+function attachTreeAutoScroll(treeEl) {
+  const EDGE_ZONE_PX = 60;
+  const MAX_SPEED_PX = 14;
+
+  let dragActive = false;
+  let pointerY = 0;
+  let rafId = null;
+
+  treeEl.addEventListener('dragover', (e) => {
+    pointerY = e.clientY;
+    if (!dragActive) {
+      dragActive = true;
+      rafId = requestAnimationFrame(tick);
+    }
+  });
+
+  // Reset when drag finishes anywhere in the document. We listen on
+  // capture so we run even if some other handler stops bubble propagation.
+  document.addEventListener('dragend', stopAutoScroll, true);
+  document.addEventListener('drop', stopAutoScroll, true);
+
+  function tick() {
+    if (!dragActive) return;
+    const rect = treeEl.getBoundingClientRect();
+    if (pointerY < rect.top + EDGE_ZONE_PX) {
+      const intensity = Math.min(1, (rect.top + EDGE_ZONE_PX - pointerY) / EDGE_ZONE_PX);
+      treeEl.scrollBy(0, -MAX_SPEED_PX * intensity);
+    } else if (pointerY > rect.bottom - EDGE_ZONE_PX) {
+      const intensity = Math.min(1, (pointerY - (rect.bottom - EDGE_ZONE_PX)) / EDGE_ZONE_PX);
+      treeEl.scrollBy(0, MAX_SPEED_PX * intensity);
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function stopAutoScroll() {
+    dragActive = false;
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  // Explicit wheel handler. The tree already has overflow-y:auto, so
+  // wheel-to-scroll works natively in the no-drag state. During an active
+  // HTML5 drag some pages install document-level wheel handlers that
+  // suppress the default; this passive listener calls scrollBy so we are
+  // not at the mercy of those.
+  treeEl.addEventListener('wheel', (e) => {
+    if (!dragActive) return;
+    treeEl.scrollBy(0, e.deltaY);
+  }, { passive: true });
 }
 
 function attachFolderDragSource(el, folderId) {
