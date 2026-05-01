@@ -539,6 +539,10 @@ async function toggleCollapse(folderId) {
   }
 }
 
+// v0.2.1 Phase 1 DnD diagnostic. Flip to false to silence.
+const DEBUG_DND = true;
+const dndLog = (...args) => { if (DEBUG_DND) console.log('[CWCF dnd]', ...args); };
+
 function attachUnsortedDropTarget(el) {
   el.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -552,10 +556,12 @@ function attachUnsortedDropTarget(el) {
     e.preventDefault();
     el.classList.remove('cwcf-panel__folder-row--drop-target');
     const payload = readDragPayload(e.dataTransfer);
+    dndLog('unsorted drop', { payload });
     if (!payload || !payload.itemRef) return;
     if (payload.kind === 'chat') {
       try {
         await S.removeItemFromAllFolders(payload.itemRef);
+        dndLog('unsorted drop completed', { itemRef: payload.itemRef });
       } catch (err) {
         console.error('[CWCF] move-to-unsorted failed', err);
       }
@@ -578,16 +584,19 @@ function attachFolderDropTarget(el, targetFolderId) {
     e.preventDefault();
     el.classList.remove('cwcf-panel__folder-row--drop-target');
     const payload = readDragPayload(e.dataTransfer);
+    dndLog('folder-row drop', { targetFolderId, payload });
     if (!payload) return;
     try {
       if (payload.kind === 'folder') {
         if (payload.folderId === targetFolderId) return;
         await S.moveToParent(payload.folderId, targetFolderId);
+        dndLog('folder→folder move complete', { from: payload.folderId, to: targetFolderId });
       } else if (payload.kind === 'chat') {
         if (payload.sourceFolderId && payload.sourceFolderId !== targetFolderId) {
           await S.removeItemFromFolder(payload.itemRef, payload.sourceFolderId);
         }
         await S.assignItemToFolder(payload.itemRef, targetFolderId);
+        dndLog('chat→folder assign complete', { itemRef: payload.itemRef, targetFolderId });
       }
     } catch (err) {
       console.error('[CWCF] folder drop failed', err);
@@ -615,9 +624,11 @@ function attachRootDropZone(treeEl) {
     e.preventDefault();
     treeEl.classList.remove('cwcf-panel__tree--drop-root');
     const payload = readDragPayload(e.dataTransfer);
+    dndLog('root drop', { payload });
     if (!payload || payload.kind !== 'folder') return;
     try {
       await S.moveToParent(payload.folderId, null);
+      dndLog('root drop complete', { folderId: payload.folderId });
     } catch (err) {
       console.error('[CWCF] move-to-root failed', err);
     }
@@ -627,11 +638,19 @@ function attachRootDropZone(treeEl) {
 function attachFolderDragSource(el, folderId) {
   el.addEventListener('dragstart', (e) => {
     const payload = { kind: 'folder', folderId };
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('application/x-cwcf-item', JSON.stringify(payload));
+    dndLog('folder dragstart', { folderId, dataTransferAvailable: !!e.dataTransfer });
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setData('application/x-cwcf-item', JSON.stringify(payload));
+      } catch (err) {
+        dndLog('folder dragstart setData threw', { err: err.message || String(err) });
+      }
+    }
     el.classList.add('cwcf-panel__folder-row--dragging');
   });
   el.addEventListener('dragend', () => {
+    dndLog('folder dragend', { folderId });
     el.classList.remove('cwcf-panel__folder-row--dragging');
   });
 }
@@ -639,11 +658,26 @@ function attachFolderDragSource(el, folderId) {
 function attachItemDragSource(el, itemRef, sourceFolderId) {
   el.addEventListener('dragstart', (e) => {
     const payload = { kind: 'chat', itemRef, sourceFolderId: sourceFolderId || null };
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('application/x-cwcf-item', JSON.stringify(payload));
+    dndLog('item dragstart', {
+      itemRef,
+      sourceFolderId: sourceFolderId || null,
+      dataTransferAvailable: !!e.dataTransfer,
+      defaultPrevented: e.defaultPrevented,
+      targetTag: e.target?.tagName,
+      targetClass: typeof e.target?.className === 'string' ? e.target.className : '(non-string)'
+    });
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setData('application/x-cwcf-item', JSON.stringify(payload));
+      } catch (err) {
+        dndLog('item dragstart setData threw', { err: err.message || String(err) });
+      }
+    }
     el.classList.add('cwcf-panel__item-row--dragging');
   });
-  el.addEventListener('dragend', () => {
+  el.addEventListener('dragend', (e) => {
+    dndLog('item dragend', { itemRef, dropEffect: e.dataTransfer?.dropEffect });
     el.classList.remove('cwcf-panel__item-row--dragging');
   });
 }
