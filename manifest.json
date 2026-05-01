@@ -33,6 +33,7 @@
         "src/content/folder-modal.js",
         "src/content/sync.js",
         "src/content/chat-context.js",
+        "src/content/recents-observer.js",
         "src/lib/emoji-set.js",
         "src/lib/storage.js",
         "src/lib/selectors.js",
