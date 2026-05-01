@@ -2,7 +2,7 @@
 
 Folder organization for claude.ai chats. Local storage only, no API access, no telemetry. Chromium-based browsers (Chrome, Vivaldi, Edge, Brave). Firefox not supported.
 
-The extension adds a toolbar popup for managing folders and an in-page UI on claude.ai (folder strip, folder panel, styled context menus on chats and folders, in-page settings overlay). Data lives in `chrome.storage.local`. JSON export and import is the only data movement, and it is always user-initiated.
+The extension's primary surface is the in-page UI on claude.ai (folder strip, folder panel, styled context menus on chats and folders, in-page settings overlay). The toolbar popup is a focused status surface with a master on/off toggle for the in-page UI plus quick access to full settings and sync. Data lives in `chrome.storage.local`. JSON export and import is the only data movement, and it is always user-initiated.
 
 ## Usage
 
@@ -22,7 +22,7 @@ The extension adds a toolbar popup for managing folders and an in-page UI on cla
 
 **Settings overlay:** click the cog in the panel header to open settings as an in-page overlay. Includes theme picker (live-applies across all in-page surfaces), default folder color, density, reduce motion, view mode, strip cap, auto-organize match mode, search toggle, auto backup, JSON export and import.
 
-**Toolbar popup:** click the extension icon. Same folder-management surface as the panel; kept for users who prefer a popup workflow.
+**Toolbar popup:** click the extension icon. Shows whether the extension is active on the current tab, lets you toggle the in-page folder UI on or off without uninstalling, and exposes quick buttons to open the full settings overlay and to trigger a sync. Folder management itself lives in the in-page settings overlay; the popup is a status and master-switch surface.
 
 **No folders yet?** The strip toggle, the panel header, and the chat context menu all open the in-page settings overlay where you can create folders.
 
@@ -101,7 +101,7 @@ The test page exercises 57 cases covering schema validation, race conditions on 
 2. Click **Back up current state**. A timestamped JSON file downloads to your Downloads folder. Keep it; the test run wipes storage.
 3. Click **Run tests (auto-backs up first, then wipes)**. A second pre-test backup downloads, you confirm the wipe, and the test runner steps through every case.
 4. Expected result: `57 passed, 0 failed of 57`.
-5. To restore your folders, use the popup's settings panel: **Import** and select the backup JSON.
+5. To restore your folders, open the in-page settings overlay (cog button on the strip or panel header) and use **Import** to select the backup JSON.
 
 ## Browser support
 
