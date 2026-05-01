@@ -541,8 +541,11 @@ async function toggleCollapse(folderId) {
   }
 }
 
-// v0.2.1 Phase 1 DnD diagnostic. Flip to false to silence.
-const DEBUG_DND = true;
+// DnD diagnostic logging gate. Default off for shipping; flip to true
+// in place when investigating drag-and-drop regressions. The log calls
+// are fenced inside `if (DEBUG_DND)` for zero allocation in the off
+// case.
+const DEBUG_DND = false;
 const dndLog = (...args) => { if (DEBUG_DND) console.log('[CWCF dnd]', ...args); };
 
 // Phase 1.6 diagnostic: capture-phase listeners at document level. Fire
@@ -748,12 +751,28 @@ function attachTreeAutoScroll(treeEl) {
     }
   }
 
-  // Wheel passthrough during drag. Document-level capture-phase so we
-  // catch wheel events regardless of cursor position (cursor often moves
-  // outside the panel during a drag) and regardless of any page-level
-  // wheel handlers that might intercept on bubble. passive:true so we
-  // can't preventDefault — but we don't need to, scrollBy alone moves
-  // the panel.
+  // Wheel-during-drag handler. Currently dormant on Chromium-based
+  // browsers because Chromium does not dispatch wheel events to
+  // JavaScript while an HTML5 native drag is active. Verified by
+  // diagnostic logs in the v0.2.1 fixup round: this listener is
+  // registered at the highest catchment we can reach (document, capture
+  // phase) and never fires during a drag.
+  //
+  // We keep the registration anyway because:
+  // - Cost is zero. Listener never runs in the off case.
+  // - If a future Chromium release changes wheel-during-drag behavior,
+  //   wheel scroll just starts working with no code change.
+  // - If we later replace HTML5 native drag with a custom implementation
+  //   (mousedown/mousemove/mouseup ghost-render approach), wheel events
+  //   are no longer suppressed and this handler activates.
+  //
+  // The user-facing answer for "scroll while dragging" today is the
+  // edge-zone auto-scroll above: hold the dragged item near the top or
+  // bottom of the panel, the panel scrolls under it. Speed ramps with
+  // proximity to the edge.
+  //
+  // dndLog is gated on DEBUG_DND for tracing if the behavior ever does
+  // start firing.
   document.addEventListener('wheel', (e) => {
     if (!dragActive) return;
     dndLog('wheel during drag', { deltaY: e.deltaY });

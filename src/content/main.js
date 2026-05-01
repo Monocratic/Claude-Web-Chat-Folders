@@ -162,10 +162,6 @@ async function maybeStartSyncRunner() {
   if (window.location.pathname !== '/recents') return;
   let trigger = null;
   try { trigger = sessionStorage.getItem('cwcf:autosync'); } catch {}
-  console.log('[CWCF main] maybeStartSyncRunner', {
-    path: window.location.pathname,
-    sessionStorageTrigger: trigger
-  });
   if (trigger !== '1') return;
   try {
     if (!state.modules.syncRunner) {

@@ -1,9 +1,11 @@
 import * as S from '../lib/storage.js';
 import { extractChatUuid } from '../lib/selectors.js';
 
-// v0.2.1 Phase 1 diagnostic. Flip to false to silence. Removed in v0.2.1
-// Phase 2 cleanup commit once root cause is fixed.
-const DEBUG = true;
+// Diagnostic logging gate. Default off for shipping; flip to true in
+// place when investigating chat-context regressions. Each log call is
+// fenced inside `if (DEBUG)` so the cost in the false case is one
+// branch comparison, no string allocation.
+const DEBUG = false;
 const log = (...args) => { if (DEBUG) console.log('[CWCF chat-context]', ...args); };
 
 let mainState = null;

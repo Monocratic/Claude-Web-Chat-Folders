@@ -392,3 +392,15 @@ The button disappears from the DOM when the user has reached the end of their ch
 ### Drag preemption (drop-side)
 
 claude.ai's React layer often clears or replaces `dataTransfer` between dragstart (where our content script writes `application/x-cwcf-item`) and drop (where the panel/strip reads it). The drop-side fallback reads `text/uri-list` / `text/plain` / `text/x-moz-url` / `URL` and parses the chat UUID from the URL. A `console.warn` fires on the fallback path so the preemption is visible in the console even when the assignment succeeds.
+
+## SPA router strips URL hashes (v0.2.1 sync trigger redesign)
+
+The v0.2.1 sync flow originally used a URL hash (`/recents#cwcf-autoscroll`) to signal autosync mode to the content script after same-tab navigation. That never fired in production. Console diagnostics confirmed: by the time our content script runs at `document_idle`, claude.ai's SPA router has already mounted the route and stripped the hash. `window.location.hash` reads as empty string when our `start()` executes.
+
+Replaced with `sessionStorage`. The panel sync button writes `sessionStorage.setItem('cwcf:autosync', '1')` immediately before `window.location.assign('/recents')`. SessionStorage is per-origin per-tab and survives same-tab navigation untouched by the SPA router. The runner reads and clears the flag on /recents load, so a manual refresh of /recents doesn't re-trigger autosync (the user can click sync again to retrigger).
+
+Lesson for any future cross-route signal: don't use URL hashes on SPA-routed sites. SessionStorage is one storage call away and is robust to whatever the framework decides to do with the URL during route transitions.
+
+### Show-more button selector
+
+`findShowMoreButton` matches on substring `'show more'` of the button's `textContent.trim().toLowerCase()`. v0.2 used strict equality (`text === 'show more'`), which broke if the button shipped with any wrapping span, sr-only suffix, or extra whitespace. v0.2.1 relaxed to substring after diagnostic logs surfaced this risk during the iframe→same-tab pivot. The substring test still cleanly avoids matching unrelated buttons because no other button text on /recents contains the phrase.

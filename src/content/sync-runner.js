@@ -15,7 +15,9 @@ const POLL_INTERVAL_MS = 250;
 const SETTLE_DELAY_MS = 1_500;
 const TRIGGER_KEY = 'cwcf:autosync';
 
-const DEBUG = true;
+// Diagnostic logging gate. Default off for shipping; flip to true in
+// place when investigating sync regressions.
+const DEBUG = false;
 const log = (...args) => { if (DEBUG) console.log('[CWCF sync-runner]', ...args); };
 
 let started = false;
