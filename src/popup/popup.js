@@ -1,135 +1,116 @@
+// Repurposed v0.3.0 popup. Status, master UI toggle, and quick actions.
+// All folder management lives in the in-page settings overlay
+// (src/content/settings-overlay.js). The popup's job is to be the
+// always-available status surface even when the user isn't on
+// claude.ai, plus the master switch for hiding the in-page UI.
+
 import * as S from '../lib/storage.js';
 import { resolveTheme, applyTheme } from '../lib/themes.js';
-import {
-  state, $, showView, getCurrentView, showToast, debounce,
-  reloadState, SEARCH_DEBOUNCE_MS
-} from './popup-shared.js';
-import { renderFolderList, renderFolderDetail, openFolderDetail, wireFolderDetailButtons } from './popup-folders.js';
-import { openCreateFolderModal, wireFolderEditModal, wireEmojiPickerModal } from './popup-modals.js';
-import { populateSettingsControls, wireSettingsEvents, updateStorageUsage } from './popup-settings.js';
+
+const $ = (id) => document.getElementById(id);
+
+const els = {
+  status: $('popup-status'),
+  statusText: $('popup-status-text'),
+  toggle: $('popup-ui-toggle'),
+  btnSettings: $('popup-btn-settings'),
+  btnSync: $('popup-btn-sync'),
+  version: $('popup-version')
+};
+
+let state = null;
+
+init().catch(err => console.error('[CWCF popup] init failed', err));
 
 async function init() {
-  await reloadState();
-  applyCurrentTheme();
-  renderFolderList();
-  populateSettingsControls();
-  updateStorageUsage();
+  els.version.textContent = `v${chrome.runtime.getManifest().version}`;
 
-  wireTopLevelEvents();
-  wireFolderDetailButtons();
-  wireFolderEditModal();
-  wireEmojiPickerModal();
-  wireSettingsEvents();
+  state = await S.loadState();
+  applyPopupTheme();
+  renderToggle();
 
-  S.subscribeToChanges(handleStorageChange);
-  window.addEventListener('pageshow', (e) => {
-    if (e.persisted) reloadAndRender();
+  const tab = await getActiveClaudeTab();
+  renderStatus(tab);
+  els.btnSync.disabled = !tab;
+
+  els.toggle.addEventListener('change', onToggle);
+  els.btnSettings.addEventListener('click', onOpenSettings);
+  els.btnSync.addEventListener('click', onSync);
+
+  S.subscribeToChanges((next) => {
+    state = next || state;
+    applyPopupTheme();
+    renderToggle();
   });
-
-  routeFromHash();
-
-  document.body.classList.add('cwcf-ready');
 }
 
-// If the popup was opened with #settings (from the in-page cog button via
-// chrome.tabs.create), jump straight to the settings view. Other hashes
-// reserved for v0.3 (could route to a folder detail by id, etc).
-function routeFromHash() {
-  const hash = window.location.hash;
-  if (hash === '#settings') {
-    showView('settings');
+function applyPopupTheme() {
+  const settings = state?.settings || {};
+  const tokens = resolveTheme(settings.activeTheme || 'neon-purple', settings.customTheme || {});
+  applyTheme(tokens, document.documentElement);
+}
+
+function renderToggle() {
+  const enabled = state?.settings?.uiEnabled !== false;
+  els.toggle.checked = enabled;
+}
+
+function renderStatus(tab) {
+  if (tab) {
+    els.status.dataset.state = 'active';
+    els.statusText.textContent = 'Active on claude.ai';
+  } else {
+    els.status.dataset.state = 'idle';
+    els.statusText.textContent = 'Open claude.ai to use the folder UI';
   }
 }
 
-function applyCurrentTheme() {
-  const tokens = resolveTheme(
-    state.loaded.settings.activeTheme,
-    state.loaded.settings.customTheme
-  );
-  applyTheme(tokens);
+async function getActiveClaudeTab() {
+  try {
+    const tabs = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+      url: 'https://claude.ai/*'
+    });
+    return tabs[0] || null;
+  } catch {
+    return null;
+  }
 }
 
-async function reloadAndRender() {
-  const previousActiveTheme = state.loaded?.settings?.activeTheme;
-  const previousCustomTheme = state.loaded?.settings?.customTheme;
-  await reloadState();
-  if (
-    state.loaded.settings.activeTheme !== previousActiveTheme ||
-    JSON.stringify(state.loaded.settings.customTheme) !== JSON.stringify(previousCustomTheme)
-  ) {
-    applyCurrentTheme();
+async function onToggle(e) {
+  const next = !!e.target.checked;
+  try {
+    await S.updateSettings({ uiEnabled: next });
+  } catch (err) {
+    console.error('[CWCF popup] toggle failed', err);
+    e.target.checked = !next;
   }
-  renderFolderList();
-  if (getCurrentView() === 'folder-detail' && state.detailFolderId) {
-    await renderFolderDetail();
-  }
-  populateSettingsControls();
-  updateStorageUsage();
 }
 
-async function handleStorageChange(newValue) {
-  if (!newValue) {
-    state.loaded = null;
-    await reloadState();
-    applyCurrentTheme();
-    renderFolderList();
-    populateSettingsControls();
-    updateStorageUsage();
+async function onOpenSettings() {
+  const tab = await getActiveClaudeTab();
+  if (!tab) {
+    chrome.tabs.create({ url: 'https://claude.ai/' });
+    window.close();
     return;
   }
-  await reloadAndRender();
-}
-
-function wireTopLevelEvents() {
-  $('btn-create-folder').addEventListener('click', openCreateFolderModal);
-
-  $('btn-settings-open').addEventListener('click', () => showView('settings'));
-  $('btn-settings-close').addEventListener('click', () => showView('folders'));
-
-  $('btn-back').addEventListener('click', () => {
-    state.detailFolderId = null;
-    showView('folders');
-  });
-
-  $('btn-search-toggle').addEventListener('click', toggleSearch);
-
-  const searchInput = $('search-input');
-  const debouncedSearch = debounce((value) => {
-    state.searchQuery = value.trim();
-    renderFolderList();
-  }, SEARCH_DEBOUNCE_MS);
-  searchInput.addEventListener('input', (e) => debouncedSearch(e.target.value));
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const view = getCurrentView();
-      if (view === 'folder-detail') {
-        state.detailFolderId = null;
-        showView('folders');
-      } else if (view === 'settings') {
-        showView('folders');
-      } else if (state.searchVisible) {
-        toggleSearch();
-      }
-    }
-  });
-}
-
-function toggleSearch() {
-  state.searchVisible = !state.searchVisible;
-  const bar = $('search-bar');
-  bar.hidden = !state.searchVisible;
-  if (state.searchVisible) {
-    setTimeout(() => $('search-input').focus(), 0);
-  } else {
-    $('search-input').value = '';
-    state.searchQuery = '';
-    renderFolderList();
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: 'cwcf:openSettingsOverlay' });
+  } catch (err) {
+    console.warn('[CWCF popup] open settings dispatch failed; opening claude.ai', err);
+    chrome.tabs.create({ url: 'https://claude.ai/' });
   }
+  window.close();
 }
 
-init().catch(err => {
-  console.error('[CWCF] popup init failed', err);
-  document.body.classList.add('cwcf-ready');
-  showToast(`Init failed: ${err.message}`, 'error');
-});
+async function onSync() {
+  const tab = await getActiveClaudeTab();
+  if (!tab) return;
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: 'cwcf:triggerSync' });
+  } catch (err) {
+    console.warn('[CWCF popup] sync dispatch failed', err);
+  }
+  window.close();
+}

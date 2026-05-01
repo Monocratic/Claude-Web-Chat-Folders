@@ -6,220 +6,49 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div id="app" data-view="folders">
-    <header class="app-header">
-      <div class="app-header__title">
-        <h1>Folders</h1>
-        <span class="app-header__count" id="folder-count" hidden></span>
+  <div class="popup" id="popup">
+    <header class="popup__header">
+      <div class="popup__brand">
+        <img class="popup__brand-icon" src="../../icons/icon32.png" alt="" width="24" height="24">
+        <h1 class="popup__brand-title">Claude Folders</h1>
       </div>
-      <div class="app-header__actions">
-        <button class="icon-btn" id="btn-search-toggle" type="button" aria-label="Search" title="Search">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 11l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
-        <button class="icon-btn" id="btn-settings-open" type="button" aria-label="Settings" title="Settings">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM8 1l1 2 2 .5 1.5 1.5L12 7l1 2-1.5 2L9 12l-1 2-1-2-2-.5L3.5 10 4 8 3 6l1.5-2L7 3l1-2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
-        </button>
-      </div>
+      <span class="popup__version" id="popup-version"></span>
     </header>
 
-    <div class="search-bar" id="search-bar" hidden>
-      <input type="search" id="search-input" placeholder="Search folders and chats" autocomplete="off">
-    </div>
+    <section class="popup__status" id="popup-status" data-state="checking">
+      <span class="popup__status-dot"></span>
+      <span class="popup__status-text" id="popup-status-text">Checking…</span>
+    </section>
 
-    <main class="view view--folders" id="view-folders">
-      <section class="folder-section" id="section-pinned" hidden>
-        <h2 class="section-heading">Pinned</h2>
-        <ul class="folder-list" id="folder-list-pinned" role="list"></ul>
-      </section>
+    <section class="popup__toggle">
+      <label class="popup__toggle-label" for="popup-ui-toggle">
+        <input type="checkbox" id="popup-ui-toggle" class="popup__toggle-checkbox">
+        <span class="popup__toggle-track"><span class="popup__toggle-thumb"></span></span>
+        <span class="popup__toggle-text">
+          <span class="popup__toggle-title">Show folder UI on claude.ai</span>
+          <span class="popup__toggle-hint">Hide the strip and panel without uninstalling.</span>
+        </span>
+      </label>
+    </section>
 
-      <section class="folder-section">
-        <h2 class="section-heading" id="section-all-heading">All folders</h2>
-        <ul class="folder-list" id="folder-list-all" role="list"></ul>
-      </section>
-
-      <div class="empty-state" id="empty-folders" hidden>
-        <p>No folders yet.</p>
-        <p class="empty-state__hint">Create one to start organizing your Claude chats.</p>
-      </div>
-
-      <button class="primary-btn primary-btn--full" id="btn-create-folder" type="button">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        New folder
+    <section class="popup__actions">
+      <button type="button" class="popup__btn popup__btn--primary" id="popup-btn-settings">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path d="M8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM8 1l1 2 2 .5 1.5 1.5L12 7l1 2-1.5 2L9 12l-1 2-1-2-2-.5L3.5 10 4 8 3 6l1.5-2L7 3l1-2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+        </svg>
+        Open full settings
       </button>
-    </main>
+      <button type="button" class="popup__btn" id="popup-btn-sync">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path d="M3 8a5 5 0 018.66-3.4M13 8a5 5 0 01-8.66 3.4M11 2v3h-3M5 14v-3h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Sync all chats
+      </button>
+    </section>
 
-    <main class="view view--folder-detail" id="view-folder-detail" hidden>
-      <header class="detail-header">
-        <button class="icon-btn" id="btn-back" type="button" aria-label="Back to folders" title="Back">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <div class="detail-header__title">
-          <span class="folder-swatch" id="detail-swatch"></span>
-          <span class="folder-icon" id="detail-icon"></span>
-          <h2 id="detail-name">Folder</h2>
-        </div>
-        <button class="icon-btn" id="btn-folder-edit" type="button" aria-label="Edit folder" title="Edit">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M11.5 2.5l2 2L5 13H3v-2l8.5-8.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-        </button>
-        <button class="icon-btn icon-btn--danger" id="btn-folder-delete" type="button" aria-label="Delete folder" title="Delete">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 4h10M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M4 4l1 9a1 1 0 001 1h4a1 1 0 001-1l1-9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </header>
-      <p class="detail-description" id="detail-description" hidden></p>
-      <ul class="item-list" id="detail-items" role="list"></ul>
-      <div class="empty-state" id="detail-empty" hidden>
-        <p>No items in this folder yet.</p>
-        <p class="empty-state__hint">Right-click a chat link in claude.ai's sidebar and choose "Add chat to folder" to assign it.</p>
-      </div>
-    </main>
-
-    <main class="view view--settings" id="view-settings" hidden>
-      <header class="detail-header">
-        <button class="icon-btn" id="btn-settings-close" type="button" aria-label="Close settings" title="Close">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <div class="detail-header__title">
-          <h2>Settings</h2>
-        </div>
-      </header>
-
-      <section class="settings-group">
-        <h3>Appearance</h3>
-        <label class="settings-row">
-          <span class="settings-row__label">Theme</span>
-          <select id="setting-theme"></select>
-        </label>
-        <label class="settings-row">
-          <span class="settings-row__label">Default folder color</span>
-          <input type="color" id="setting-default-color">
-        </label>
-      </section>
-
-      <section class="settings-group">
-        <h3>Folders</h3>
-        <label class="settings-row settings-row--toggle">
-          <span class="settings-row__label">Show chat counts on folders</span>
-          <input type="checkbox" id="setting-show-counts">
-        </label>
-        <label class="settings-row">
-          <span class="settings-row__label">Quick-assign folder</span>
-          <select id="setting-quick-folder">
-            <option value="">None</option>
-          </select>
-        </label>
-      </section>
-
-      <section class="settings-group">
-        <h3>Behavior</h3>
-        <label class="settings-row settings-row--toggle">
-          <span class="settings-row__label">Confirm before deleting folders</span>
-          <input type="checkbox" id="setting-confirm-delete">
-        </label>
-      </section>
-
-      <section class="settings-group">
-        <h3>In-page view</h3>
-        <label class="settings-row">
-          <span class="settings-row__label">Default view mode</span>
-          <select id="setting-view-mode">
-            <option value="default">Strip (default)</option>
-            <option value="organize">Folder panel</option>
-          </select>
-        </label>
-        <label class="settings-row">
-          <span class="settings-row__label">Strip folder cap</span>
-          <input type="number" id="setting-strip-cap" min="1" max="50" step="1">
-        </label>
-        <label class="settings-row">
-          <span class="settings-row__label">Strip overflow</span>
-          <select id="setting-strip-overflow">
-            <option value="indicator">Indicator (+N)</option>
-            <option value="scroll">Scrollable</option>
-          </select>
-        </label>
-      </section>
-
-      <section class="settings-group">
-        <h3>Auto-organize</h3>
-        <label class="settings-row">
-          <span class="settings-row__label">Match mode</span>
-          <select id="setting-auto-organize-mode">
-            <option value="contains">Title contains folder name</option>
-            <option value="exact">Title equals folder name</option>
-          </select>
-        </label>
-      </section>
-
-      <section class="settings-group">
-        <h3>Data</h3>
-        <div class="settings-row">
-          <button class="secondary-btn" id="btn-export" type="button">Export</button>
-          <button class="secondary-btn" id="btn-import" type="button">Import</button>
-          <input type="file" id="import-file-input" accept="application/json" hidden>
-        </div>
-        <div class="settings-row settings-row--info">
-          <span class="settings-row__label">Storage usage</span>
-          <span id="storage-usage" class="settings-row__value">&mdash;</span>
-        </div>
-      </section>
-    </main>
-
-    <dialog class="modal" id="modal-folder-edit" aria-labelledby="folder-edit-title">
-      <form class="modal__form" id="folder-edit-form" method="dialog">
-        <h3 id="folder-edit-title">New folder</h3>
-        <label class="form-row">
-          <span class="form-row__label">Name</span>
-          <input type="text" id="folder-edit-name" maxlength="64" required>
-        </label>
-        <label class="form-row">
-          <span class="form-row__label">Color</span>
-          <div class="color-picker">
-            <input type="color" id="folder-edit-color">
-            <div class="color-picker__presets" id="color-picker-presets"></div>
-            <div class="color-picker__recents" id="color-picker-recents" hidden></div>
-          </div>
-        </label>
-        <label class="form-row">
-          <span class="form-row__label">Icon (emoji, optional)</span>
-          <div class="emoji-picker">
-            <input type="text" id="folder-edit-icon" maxlength="8" placeholder="None">
-            <button type="button" class="secondary-btn" id="btn-emoji-pick">Pick</button>
-            <button type="button" class="secondary-btn" id="btn-emoji-clear">Clear</button>
-          </div>
-        </label>
-        <label class="form-row">
-          <span class="form-row__label">Description (optional)</span>
-          <textarea id="folder-edit-description" maxlength="280" rows="2"></textarea>
-          <span class="form-row__hint" id="folder-edit-description-count">0 / 280</span>
-        </label>
-        <div class="modal__actions">
-          <button type="button" class="secondary-btn" id="btn-folder-edit-cancel">Cancel</button>
-          <button type="submit" class="primary-btn" id="btn-folder-edit-save">Save</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog class="modal modal--emoji" id="modal-emoji-picker" aria-labelledby="emoji-picker-title">
-      <header class="modal__header">
-        <h3 id="emoji-picker-title">Pick an icon</h3>
-        <button type="button" class="icon-btn" id="btn-emoji-picker-close" aria-label="Close">
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
-      </header>
-      <div class="emoji-picker__recents" id="emoji-picker-recents" hidden>
-        <h4>Recent</h4>
-        <div class="emoji-grid" id="emoji-grid-recents"></div>
-      </div>
-      <div class="emoji-picker__categories" id="emoji-picker-categories"></div>
-    </dialog>
-
-    <dialog class="modal modal--confirm" id="modal-confirm" aria-labelledby="confirm-title">
-      <h3 id="confirm-title">Confirm</h3>
-      <p id="confirm-message"></p>
-      <div class="modal__actions"></div>
-    </dialog>
-
-    <div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
+    <footer class="popup__footer">
+      <a class="popup__link" href="https://github.com/Monocratic/Claude-Web-Chat-Folders" target="_blank" rel="noopener">github.com/Monocratic/Claude-Web-Chat-Folders</a>
+    </footer>
   </div>
 
   <script type="module" src="popup.js"></script>

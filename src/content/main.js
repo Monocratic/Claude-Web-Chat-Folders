@@ -60,6 +60,16 @@ export async function start() {
       const apiRef = getApi();
       apiRef.openSettingsOverlay();
       sendResponse({ ok: true });
+      return false;
+    }
+    if (message?.type === 'cwcf:triggerSync') {
+      // Popup-triggered sync. Sets the same sessionStorage flag the
+      // panel button uses, then navigates this tab to /recents where
+      // sync-runner picks it up.
+      try { sessionStorage.setItem('cwcf:autosync', '1'); } catch {}
+      window.location.assign('/recents');
+      sendResponse({ ok: true });
+      return false;
     }
     return false;
   });
