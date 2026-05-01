@@ -62,6 +62,10 @@ This is the canonical install path until v1.0 ships on the Chrome Web Store.
 
 6. Note the extension ID shown on the loaded extension's card. With the embedded `key` field in `manifest.json`, this ID is deterministic and stable across reinstalls and machines.
 
+### Branding
+
+The extension's icon set lives in `icons/`: PNGs at the Chrome Web Store required sizes (16/32/48/128) plus a 256 preview and `master.svg` as the vector source for future re-renders. The toolbar icon, extensions-management icon, and any future Web Store listing pull from this set.
+
 ### Test page (for verifying storage layer)
 
 After install, the storage test page is reachable at:
