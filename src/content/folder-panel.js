@@ -544,12 +544,25 @@ const DEBUG_DND = true;
 const dndLog = (...args) => { if (DEBUG_DND) console.log('[CWCF dnd]', ...args); };
 
 function attachUnsortedDropTarget(el) {
+  let firstOverLogged = false;
   el.addEventListener('dragover', (e) => {
+    if (!firstOverLogged) {
+      firstOverLogged = true;
+      dndLog('unsorted dragover (first event)', {
+        types: e.dataTransfer ? Array.from(e.dataTransfer.types) : '(no dataTransfer)'
+      });
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     el.classList.add('cwcf-panel__folder-row--drop-target');
   });
+  el.addEventListener('dragenter', (e) => {
+    dndLog('unsorted dragenter', {
+      types: e.dataTransfer ? Array.from(e.dataTransfer.types) : '(no dataTransfer)'
+    });
+  });
   el.addEventListener('dragleave', () => {
+    firstOverLogged = false;
     el.classList.remove('cwcf-panel__folder-row--drop-target');
   });
   el.addEventListener('drop', async (e) => {
@@ -570,14 +583,31 @@ function attachUnsortedDropTarget(el) {
 }
 
 function attachFolderDropTarget(el, targetFolderId) {
+  let firstOverLogged = false;
+  el.addEventListener('dragenter', (e) => {
+    dndLog('folder-row dragenter', {
+      targetFolderId,
+      types: e.dataTransfer ? Array.from(e.dataTransfer.types) : '(no dataTransfer)'
+    });
+  });
   el.addEventListener('dragover', (e) => {
     const payload = readDragPayloadPreview(e.dataTransfer);
+    if (!firstOverLogged) {
+      firstOverLogged = true;
+      dndLog('folder-row dragover (first event)', {
+        targetFolderId,
+        types: e.dataTransfer ? Array.from(e.dataTransfer.types) : '(no dataTransfer)',
+        previewPayload: payload,
+        willPreventDefault: !!payload
+      });
+    }
     if (!payload) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = payload.kind === 'folder' ? 'move' : 'copy';
     el.classList.add('cwcf-panel__folder-row--drop-target');
   });
   el.addEventListener('dragleave', () => {
+    firstOverLogged = false;
     el.classList.remove('cwcf-panel__folder-row--drop-target');
   });
   el.addEventListener('drop', async (e) => {
