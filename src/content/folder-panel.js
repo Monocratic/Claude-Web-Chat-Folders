@@ -96,10 +96,10 @@ function buildPanelDom() {
   const syncBtn = document.createElement('button');
   syncBtn.type = 'button';
   syncBtn.className = 'cwcf-panel__icon-btn';
-  syncBtn.title = 'Sync chat list from /recents (catches chats not in sidebar)';
-  syncBtn.setAttribute('aria-label', 'Sync chats');
+  syncBtn.title = 'Sync all chats — opens claude.ai/recents and auto-loads the full list';
+  syncBtn.setAttribute('aria-label', 'Sync all chats');
   syncBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8a5 5 0 018.66-3.4M13 8a5 5 0 01-8.66 3.4M11 2v3h-3M5 14v-3h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  syncBtn.addEventListener('click', () => handleSyncClick(syncBtn));
+  syncBtn.addEventListener('click', handleSyncClick);
   headerBtns.appendChild(syncBtn);
 
   const createBtn = document.createElement('button');
@@ -785,103 +785,14 @@ function handleCreateFolder() {
   }
 }
 
-let syncInFlight = false;
-let syncStatusEl = null;
-let syncStatusHideTimer = null;
-let syncUnsubscribe = null;
-
-async function handleSyncClick(btn) {
-  console.log('[CWCF panel] handleSyncClick fired', { syncInFlight, hasApi: !!api, hasRunSync: !!(api && api.runSync) });
-  if (syncInFlight) return;
-  if (!api || !api.runSync) {
-    console.warn('[CWCF panel] handleSyncClick bailed: api or api.runSync missing');
-    return;
-  }
-  syncInFlight = true;
-  btn.classList.add('cwcf-panel__icon-btn--busy');
-  btn.disabled = true;
-
-  showSyncStatus('Syncing…', 'progress');
-  await ensureSyncSubscription();
-
-  try {
-    console.log('[CWCF panel] calling api.runSync()');
-    const result = await api.runSync();
-    console.log('[CWCF panel] runSync resolved', result);
-    showSyncStatus(`Synced ${result.count} chats`, 'success');
-    scheduleSyncStatusHide(3000);
-  } catch (err) {
-    console.error('[CWCF panel] sync failed', err);
-    const reason = err && err.message ? err.message : String(err);
-    showSyncStatus(`Sync failed: ${reason}`, 'error');
-    scheduleSyncStatusHide(6000);
-  } finally {
-    syncInFlight = false;
-    btn.classList.remove('cwcf-panel__icon-btn--busy');
-    btn.disabled = false;
-  }
-}
-
-async function ensureSyncSubscription() {
-  if (syncUnsubscribe) return;
-  if (!api || !api.subscribeSync) return;
-  syncUnsubscribe = await api.subscribeSync(handleSyncEvent);
-}
-
-function handleSyncEvent(event) {
-  if (!event) return;
-  switch (event.phase) {
-    case 'starting':
-      showSyncStatus('Opening /recents…', 'progress');
-      break;
-    case 'loading':
-      showSyncStatus('Waiting for chats to render…', 'progress');
-      break;
-    case 'expanding':
-      showSyncStatus(`Loading more… ${event.count} chats found`, 'progress');
-      break;
-    case 'settling':
-      showSyncStatus(`Finalizing… ${event.count} chats found`, 'progress');
-      break;
-    case 'done':
-      showSyncStatus(`Synced ${event.count} chats`, 'success');
-      break;
-    case 'error':
-      showSyncStatus(`Sync failed: ${event.message || 'unknown error'}`, 'error');
-      break;
-  }
-}
-
-function ensureSyncStatusEl() {
-  if (syncStatusEl && document.body.contains(syncStatusEl)) return syncStatusEl;
-  if (!panelEl) return null;
-  syncStatusEl = document.createElement('div');
-  syncStatusEl.className = 'cwcf-panel__sync-status';
-  syncStatusEl.setAttribute('role', 'status');
-  syncStatusEl.setAttribute('aria-live', 'polite');
-  panelEl.appendChild(syncStatusEl);
-  return syncStatusEl;
-}
-
-function showSyncStatus(text, kind) {
-  const el = ensureSyncStatusEl();
-  if (!el) return;
-  if (syncStatusHideTimer) {
-    clearTimeout(syncStatusHideTimer);
-    syncStatusHideTimer = null;
-  }
-  el.textContent = text;
-  el.classList.remove('cwcf-panel__sync-status--success', 'cwcf-panel__sync-status--error', 'cwcf-panel__sync-status--progress');
-  el.classList.add(`cwcf-panel__sync-status--${kind}`);
-  el.classList.add('cwcf-panel__sync-status--visible');
-}
-
-function scheduleSyncStatusHide(ms) {
-  if (syncStatusHideTimer) clearTimeout(syncStatusHideTimer);
-  syncStatusHideTimer = setTimeout(() => {
-    if (syncStatusEl) syncStatusEl.classList.remove('cwcf-panel__sync-status--visible');
-    syncStatusHideTimer = null;
-  }, ms);
+// Same-tab navigation to /recents with the autoscroll hash. The runner
+// in src/content/sync-runner.js detects the hash on /recents load,
+// auto-clicks Show More until exhausted, and the recents observer
+// (src/content/recents-observer.js) writes cells into chatCache as they
+// render. User stays on /recents after sync completes.
+function handleSyncClick(e) {
+  if (e) e.preventDefault();
+  window.location.assign('/recents#cwcf-autoscroll');
 }
 
 let activeFolderMenu = null;
