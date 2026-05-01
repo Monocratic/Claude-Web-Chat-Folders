@@ -631,7 +631,14 @@ function attachFolderDropTarget(el, targetFolderId) {
     }
     if (!payload) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = payload.kind === 'folder' ? 'move' : 'copy';
+    // dropEffect must be a member of effectAllowed (set in attachItem/
+    // FolderDragSource as 'move'). Anything else and the browser refuses
+    // the drop with dragend dropEffect:'none' and never fires the drop
+    // event. readDragPayloadPreview returns {kind:'unknown'} during
+    // dragover (getData isn't available), so we can't reliably branch
+    // on kind here even if we wanted to. Both chat→folder assignment
+    // and folder→folder reparent are semantic moves; 'move' fits both.
+    e.dataTransfer.dropEffect = 'move';
     el.classList.add('cwcf-panel__folder-row--drop-target');
   });
   el.addEventListener('dragleave', () => {
