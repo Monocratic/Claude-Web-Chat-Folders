@@ -42,6 +42,7 @@ export async function start() {
   applyActiveTheme();
   await attachChatContextMenu();
   await maybeStartRecentsObserver();
+  await maybeStartSyncRunner();
 
   await loadModulesForViewMode(state.loaded.settings.viewMode);
   attachObserver();
@@ -79,6 +80,7 @@ function watchSpaNavigation() {
     lastPath = cur;
     if (cur === '/recents') {
       maybeStartRecentsObserver();
+      maybeStartSyncRunner();
     } else if (state.modules.recentsObserver && state.modules.recentsObserver.isRunning?.()) {
       state.modules.recentsObserver.stop();
     }
@@ -151,6 +153,24 @@ async function maybeStartRecentsObserver() {
     state.modules.recentsObserver.start();
   } catch (err) {
     console.error('[CWCF] failed to start recents observer', err);
+  }
+}
+
+// Sync-runner only fires when /recents is loaded with the
+// #cwcf-autoscroll hash set (the panel sync button drops the user here).
+// Module checks both conditions itself; calling unconditionally on
+// /recents is fine.
+async function maybeStartSyncRunner() {
+  if (window.location.pathname !== '/recents') return;
+  if (window.location.hash !== '#cwcf-autoscroll') return;
+  try {
+    if (!state.modules.syncRunner) {
+      const url = chrome.runtime.getURL('src/content/sync-runner.js');
+      state.modules.syncRunner = await import(url);
+    }
+    state.modules.syncRunner.start();
+  } catch (err) {
+    console.error('[CWCF] failed to start sync runner', err);
   }
 }
 
