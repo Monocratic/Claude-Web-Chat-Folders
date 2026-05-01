@@ -43,9 +43,11 @@ export async function start() {
   await maybeStartRecentsObserver();
   await maybeStartSyncRunner();
 
-  await loadModulesForViewMode(state.loaded.settings.viewMode);
-  attachObserver();
-  runSweep();
+  if (uiEnabled()) {
+    await loadModulesForViewMode(state.loaded.settings.viewMode);
+    attachObserver();
+    runSweep();
+  }
 
   state.unsubscribe = S.subscribeToChanges(handleStorageChange);
 
@@ -101,6 +103,7 @@ function watchSpaNavigation() {
 async function handleStorageChange(newValue) {
   const previousViewMode = state.loaded?.settings?.viewMode;
   const previousTheme = state.loaded?.settings?.activeTheme;
+  const previousUiEnabled = uiEnabled();
   if (!newValue) {
     state.loaded = await S.loadState();
   } else {
@@ -108,16 +111,48 @@ async function handleStorageChange(newValue) {
   }
   const newViewMode = state.loaded?.settings?.viewMode;
   const newTheme = state.loaded?.settings?.activeTheme;
+  const newUiEnabled = uiEnabled();
   if (previousTheme !== newTheme) {
     applyActiveTheme();
   }
-  if (previousViewMode !== newViewMode) {
+
+  // uiEnabled toggle takes priority over view-mode change because mounting
+  // is gated on it.
+  if (previousUiEnabled !== newUiEnabled) {
+    if (newUiEnabled) {
+      await loadModulesForViewMode(newViewMode);
+      attachObserver();
+      runSweep();
+    } else {
+      unmountInPageSurfaces();
+    }
+  } else if (newUiEnabled && previousViewMode !== newViewMode) {
     await loadModulesForViewMode(newViewMode);
   }
+
   if (state.modules.chatContext && state.modules.chatContext.setState) {
     state.modules.chatContext.setState(state);
   }
-  rerenderActiveModule();
+  if (newUiEnabled) {
+    rerenderActiveModule();
+  }
+}
+
+function uiEnabled() {
+  return state.loaded?.settings?.uiEnabled !== false;
+}
+
+function unmountInPageSurfaces() {
+  if (state.modules.strip && state.modules.strip.unmount) state.modules.strip.unmount();
+  if (state.modules.panel && state.modules.panel.unmount) state.modules.panel.unmount();
+  if (state.observer) {
+    state.observer.disconnect();
+    state.observer = null;
+  }
+  if (state.resizeObserver) {
+    state.resizeObserver.disconnect();
+    state.resizeObserver = null;
+  }
 }
 
 function applyActiveTheme() {

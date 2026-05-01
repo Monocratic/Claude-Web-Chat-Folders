@@ -38,7 +38,8 @@ function defaultSettings() {
     stripCap: 6,
     stripOverflowBehavior: 'indicator',
     autoOrganizeMatchMode: 'contains',
-    unsortedCollapsed: false
+    unsortedCollapsed: false,
+    uiEnabled: true
   };
 }
 
@@ -447,7 +448,8 @@ function validateSettingsPartial(p) {
     stripCap: v => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= STRIP_CAP_MAX,
     stripOverflowBehavior: v => VALID_STRIP_OVERFLOW.includes(v),
     autoOrganizeMatchMode: v => VALID_AUTO_ORGANIZE_MATCH.includes(v),
-    unsortedCollapsed: v => typeof v === 'boolean'
+    unsortedCollapsed: v => typeof v === 'boolean',
+    uiEnabled: v => typeof v === 'boolean'
   };
   for (const [key, value] of Object.entries(p)) {
     const check = checks[key];
