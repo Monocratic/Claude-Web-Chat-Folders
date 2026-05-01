@@ -31,7 +31,6 @@
         "src/content/drag-handlers.js",
         "src/content/settings-overlay.js",
         "src/content/folder-modal.js",
-        "src/content/sync.js",
         "src/content/chat-context.js",
         "src/content/recents-observer.js",
         "src/content/sync-runner.js",
