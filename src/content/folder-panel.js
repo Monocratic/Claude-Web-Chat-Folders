@@ -18,6 +18,7 @@ export function mount(state, apiHandle) {
   document.body.appendChild(panelEl);
   reposition();
   render(state);
+  ensureDocLevelDndDiag();
 }
 
 export function unmount() {
@@ -542,6 +543,33 @@ async function toggleCollapse(folderId) {
 // v0.2.1 Phase 1 DnD diagnostic. Flip to false to silence.
 const DEBUG_DND = true;
 const dndLog = (...args) => { if (DEBUG_DND) console.log('[CWCF dnd]', ...args); };
+
+// Phase 1.6 diagnostic: capture-phase listeners at document level. Fire
+// before any bubble-phase handler can be suppressed. If `drop` fires at
+// document but no folder-row drop log appears, something between document
+// and our row is calling stopPropagation or stopImmediatePropagation.
+let docLevelDndAttached = false;
+function ensureDocLevelDndDiag() {
+  if (docLevelDndAttached) return;
+  docLevelDndAttached = true;
+  document.addEventListener('drop', (e) => {
+    const tEl = e.target;
+    dndLog('document drop (capture phase)', {
+      targetTag: tEl?.tagName,
+      targetClass: typeof tEl?.className === 'string' ? tEl.className : '(non-string)',
+      closestPanelRow: tEl?.closest?.('[data-item-ref]')?.getAttribute('data-item-ref') || 'none',
+      closestFolderRow: !!tEl?.closest?.('.cwcf-panel__folder-row'),
+      defaultPrevented: e.defaultPrevented,
+      types: e.dataTransfer ? Array.from(e.dataTransfer.types) : '(no dataTransfer)'
+    });
+  }, true);
+  document.addEventListener('dragend', (e) => {
+    dndLog('document dragend (capture phase)', {
+      dropEffect: e.dataTransfer?.dropEffect,
+      defaultPrevented: e.defaultPrevented
+    });
+  }, true);
+}
 
 function attachUnsortedDropTarget(el) {
   let firstOverLogged = false;
