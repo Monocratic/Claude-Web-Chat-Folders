@@ -182,15 +182,15 @@ function buildUnsortedNode(folders, assignments, itemTitles) {
 
   const name = document.createElement('span');
   name.className = 'cwcf-panel__name';
-  name.textContent = 'Unsorted (sidebar)';
-  name.title = 'Showing chats from claude.ai\'s sidebar that have no folder assignments. Older chats not currently rendered in the sidebar are not visible here.';
+  name.textContent = 'Unsorted';
+  name.title = 'Chats not assigned to any folder. Includes anything claude.ai\'s sidebar currently renders plus anything cached from /recents browsing or from the sync button.';
   row.appendChild(name);
 
   const unsortedItems = collectUnsortedItems(assignments);
   const count = document.createElement('span');
   count.className = 'cwcf-panel__count';
   count.textContent = `${unsortedItems.length}`;
-  count.title = 'Sidebar-scoped count. claude.ai only renders ~47 chats at a time; older chats are not counted here.';
+  count.title = 'Union of sidebar-rendered chats and cached chats from /recents browsing. Sync button below populates the cache to your full chat list.';
   row.appendChild(count);
 
   attachUnsortedDropTarget(row);
