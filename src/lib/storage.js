@@ -738,6 +738,38 @@ export async function getChatCache() {
   return state.chatCache ?? { lastSyncedAt: null, chats: {} };
 }
 
+// Additive merge into the cache. Each entry should be { uuid, title }. Bad
+// entries are dropped silently. Existing entries with the same uuid are
+// overwritten so titles stay fresh; entries not in the input array are
+// preserved. Updates chatCache.lastSyncedAt to now if any valid entry was
+// merged. Used by the recents observer for incremental population as the
+// user scrolls /recents and new conversation cells render.
+export async function appendCachedChats(chatsArray) {
+  return enqueueWrite(async () => {
+    const state = await readRaw();
+    const cache = state.chatCache ?? { lastSyncedAt: null, chats: {} };
+    const merged = { ...(cache.chats || {}) };
+    const now = Date.now();
+    let mergedAny = false;
+    if (Array.isArray(chatsArray)) {
+      for (const entry of chatsArray) {
+        if (!entry || typeof entry !== 'object') continue;
+        const { uuid, title } = entry;
+        if (typeof uuid !== 'string' || !uuid) continue;
+        if (typeof title !== 'string') continue;
+        merged[uuid] = { title, lastSyncedAt: now };
+        mergedAny = true;
+      }
+    }
+    state.chatCache = {
+      lastSyncedAt: mergedAny ? now : (cache.lastSyncedAt ?? null),
+      chats: merged
+    };
+    await writeRaw(state);
+    return state.chatCache;
+  });
+}
+
 export async function clearChatCache() {
   return enqueueWrite(async () => {
     const state = await readRaw();

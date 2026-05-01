@@ -18,8 +18,9 @@ const state = {
     drag: null,
     settings: null,
     folderModal: null,
-    sync: null,
-    chatContext: null
+    chatContext: null,
+    recentsObserver: null,
+    syncRunner: null
   },
   titleCacheLastWrite: new Map()
 };
@@ -39,6 +40,8 @@ export async function start() {
 
   applyActiveTheme();
   await attachChatContextMenu();
+  await maybeStartRecentsObserver();
+  await maybeStartSyncRunner();
 
   await loadModulesForViewMode(state.loaded.settings.viewMode);
   attachObserver();
@@ -62,6 +65,37 @@ export async function start() {
   window.addEventListener('pageshow', (e) => {
     if (e.persisted) runSweep();
   });
+
+  // claude.ai is a SPA; route changes don't fire load/pageshow. Watch for
+  // pathname changes and start or stop the recents observer accordingly.
+  watchSpaNavigation();
+}
+
+function watchSpaNavigation() {
+  let lastPath = window.location.pathname;
+  const onChange = () => {
+    const cur = window.location.pathname;
+    if (cur === lastPath) return;
+    lastPath = cur;
+    if (cur === '/recents') {
+      maybeStartRecentsObserver();
+      maybeStartSyncRunner();
+    } else if (state.modules.recentsObserver && state.modules.recentsObserver.isRunning?.()) {
+      state.modules.recentsObserver.stop();
+    }
+  };
+  // Patch pushState/replaceState to dispatch a synthetic event we can hook.
+  // popstate covers back/forward; the patch covers programmatic SPA nav.
+  for (const method of ['pushState', 'replaceState']) {
+    const original = history[method];
+    history[method] = function patched(...args) {
+      const result = original.apply(this, args);
+      window.dispatchEvent(new Event('cwcf:locationchange'));
+      return result;
+    };
+  }
+  window.addEventListener('popstate', onChange);
+  window.addEventListener('cwcf:locationchange', onChange);
 }
 
 async function handleStorageChange(newValue) {
@@ -101,6 +135,42 @@ async function attachChatContextMenu() {
     state.modules.chatContext.attach(state, getApi());
   } catch (err) {
     console.error('[CWCF] failed to attach chat context menu', err);
+  }
+}
+
+// Lazy-loads the /recents observer when the user lands on /recents and
+// starts it. The module checks location.pathname itself, so a no-op if
+// the user navigates away. Re-checked on history changes via the popstate
+// listener registered later in start().
+async function maybeStartRecentsObserver() {
+  if (window.location.pathname !== '/recents') return;
+  try {
+    if (!state.modules.recentsObserver) {
+      const url = chrome.runtime.getURL('src/content/recents-observer.js');
+      state.modules.recentsObserver = await import(url);
+    }
+    state.modules.recentsObserver.start();
+  } catch (err) {
+    console.error('[CWCF] failed to start recents observer', err);
+  }
+}
+
+// Sync-runner only fires when /recents is loaded with the autosync trigger
+// set in sessionStorage by the panel sync button. The module re-checks
+// both conditions itself, so calling unconditionally on /recents is safe.
+async function maybeStartSyncRunner() {
+  if (window.location.pathname !== '/recents') return;
+  let trigger = null;
+  try { trigger = sessionStorage.getItem('cwcf:autosync'); } catch {}
+  if (trigger !== '1') return;
+  try {
+    if (!state.modules.syncRunner) {
+      const url = chrome.runtime.getURL('src/content/sync-runner.js');
+      state.modules.syncRunner = await import(url);
+    }
+    state.modules.syncRunner.start();
+  } catch (err) {
+    console.error('[CWCF] failed to start sync runner', err);
   }
 }
 
@@ -287,20 +357,6 @@ function getApi() {
       } catch (err) {
         console.error('[CWCF] failed to open settings overlay', err);
       }
-    },
-    runSync: async () => {
-      if (!state.modules.sync) {
-        const url = chrome.runtime.getURL('src/content/sync.js');
-        state.modules.sync = await import(url);
-      }
-      return state.modules.sync.runSync();
-    },
-    subscribeSync: async (fn) => {
-      if (!state.modules.sync) {
-        const url = chrome.runtime.getURL('src/content/sync.js');
-        state.modules.sync = await import(url);
-      }
-      return state.modules.sync.subscribe(fn);
     },
     openFolderModal: async (options = {}) => {
       try {

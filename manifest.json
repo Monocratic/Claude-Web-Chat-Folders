@@ -1,14 +1,26 @@
 {
   "manifest_version": 3,
   "name": "Claude Web Chat Folders",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Folder organization for claude.ai chats. Local storage only, no API access, no telemetry.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsWZG6AMaJW6KcGzdMZCmqxmppfSoJNbIXaIFtykWHvm/9KMErAlaNxYaZn2SSclGp6Op1TQrYXAK1AcFXaqxJjcx7nzOrYwPT6qT3P/2iheLmaI+0hM7e8hwlH+3ufBPgYUqryCT8n20r5DrDsRl2FrnmWr2WO6LcFSZ3DO6j1OC224OjM/smkvkEYtw0pn5IDTKoQ8Tfgw3lm1BvJkg6G32XBqepz52l+7K9s0cfcPLF3YgJyYdrocip8UOibX3m0bKKvKY/qS7fP22iKuRYAB1AKZoBFFQjp84Z+K8hUqaWZ+Jhdww2InQSgvKiZO1zdl6CJWlFxESmAcJwMGKEwIDAQAB",
   "permissions": ["storage"],
   "host_permissions": ["https://claude.ai/*"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "action": {
     "default_popup": "src/popup/popup.html",
-    "default_title": "Claude Chat Folders"
+    "default_title": "Claude Chat Folders",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "background": {
     "service_worker": "src/background.js",
@@ -31,8 +43,9 @@
         "src/content/drag-handlers.js",
         "src/content/settings-overlay.js",
         "src/content/folder-modal.js",
-        "src/content/sync.js",
         "src/content/chat-context.js",
+        "src/content/recents-observer.js",
+        "src/content/sync-runner.js",
         "src/lib/emoji-set.js",
         "src/lib/storage.js",
         "src/lib/selectors.js",

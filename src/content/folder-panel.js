@@ -18,6 +18,7 @@ export function mount(state, apiHandle) {
   document.body.appendChild(panelEl);
   reposition();
   render(state);
+  ensureDocLevelDndDiag();
 }
 
 export function unmount() {
@@ -96,10 +97,10 @@ function buildPanelDom() {
   const syncBtn = document.createElement('button');
   syncBtn.type = 'button';
   syncBtn.className = 'cwcf-panel__icon-btn';
-  syncBtn.title = 'Sync chat list from /recents (catches chats not in sidebar)';
-  syncBtn.setAttribute('aria-label', 'Sync chats');
+  syncBtn.title = 'Sync all chats — opens claude.ai/recents and auto-loads the full list';
+  syncBtn.setAttribute('aria-label', 'Sync all chats');
   syncBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 8a5 5 0 018.66-3.4M13 8a5 5 0 01-8.66 3.4M11 2v3h-3M5 14v-3h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  syncBtn.addEventListener('click', () => handleSyncClick(syncBtn));
+  syncBtn.addEventListener('click', handleSyncClick);
   headerBtns.appendChild(syncBtn);
 
   const createBtn = document.createElement('button');
@@ -153,6 +154,7 @@ function buildPanelDom() {
   tree.className = 'cwcf-panel__tree';
   tree.setAttribute('role', 'tree');
   attachRootDropZone(tree);
+  attachTreeAutoScroll(tree);
   root.appendChild(tree);
 
   return root;
@@ -182,15 +184,15 @@ function buildUnsortedNode(folders, assignments, itemTitles) {
 
   const name = document.createElement('span');
   name.className = 'cwcf-panel__name';
-  name.textContent = 'Unsorted (sidebar)';
-  name.title = 'Showing chats from claude.ai\'s sidebar that have no folder assignments. Older chats not currently rendered in the sidebar are not visible here.';
+  name.textContent = 'Unsorted';
+  name.title = 'Chats not assigned to any folder. Includes anything claude.ai\'s sidebar currently renders plus anything cached from /recents browsing or from the sync button.';
   row.appendChild(name);
 
   const unsortedItems = collectUnsortedItems(assignments);
   const count = document.createElement('span');
   count.className = 'cwcf-panel__count';
   count.textContent = `${unsortedItems.length}`;
-  count.title = 'Sidebar-scoped count. claude.ai only renders ~47 chats at a time; older chats are not counted here.';
+  count.title = 'Union of sidebar-rendered chats and cached chats from /recents browsing. Sync button below populates the cache to your full chat list.';
   row.appendChild(count);
 
   attachUnsortedDropTarget(row);
@@ -539,23 +541,72 @@ async function toggleCollapse(folderId) {
   }
 }
 
+// DnD diagnostic logging gate. Default off for shipping; flip to true
+// in place when investigating drag-and-drop regressions. The log calls
+// are fenced inside `if (DEBUG_DND)` for zero allocation in the off
+// case.
+const DEBUG_DND = false;
+const dndLog = (...args) => { if (DEBUG_DND) console.log('[CWCF dnd]', ...args); };
+
+// Phase 1.6 diagnostic: capture-phase listeners at document level. Fire
+// before any bubble-phase handler can be suppressed. If `drop` fires at
+// document but no folder-row drop log appears, something between document
+// and our row is calling stopPropagation or stopImmediatePropagation.
+let docLevelDndAttached = false;
+function ensureDocLevelDndDiag() {
+  if (docLevelDndAttached) return;
+  docLevelDndAttached = true;
+  document.addEventListener('drop', (e) => {
+    const tEl = e.target;
+    dndLog('document drop (capture phase)', {
+      targetTag: tEl?.tagName,
+      targetClass: typeof tEl?.className === 'string' ? tEl.className : '(non-string)',
+      closestPanelRow: tEl?.closest?.('[data-item-ref]')?.getAttribute('data-item-ref') || 'none',
+      closestFolderRow: !!tEl?.closest?.('.cwcf-panel__folder-row'),
+      defaultPrevented: e.defaultPrevented,
+      types: e.dataTransfer ? Array.from(e.dataTransfer.types) : '(no dataTransfer)'
+    });
+  }, true);
+  document.addEventListener('dragend', (e) => {
+    dndLog('document dragend (capture phase)', {
+      dropEffect: e.dataTransfer?.dropEffect,
+      defaultPrevented: e.defaultPrevented
+    });
+  }, true);
+}
+
 function attachUnsortedDropTarget(el) {
+  let firstOverLogged = false;
   el.addEventListener('dragover', (e) => {
+    if (!firstOverLogged) {
+      firstOverLogged = true;
+      dndLog('unsorted dragover (first event)', {
+        types: e.dataTransfer ? Array.from(e.dataTransfer.types) : '(no dataTransfer)'
+      });
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     el.classList.add('cwcf-panel__folder-row--drop-target');
   });
+  el.addEventListener('dragenter', (e) => {
+    dndLog('unsorted dragenter', {
+      types: e.dataTransfer ? Array.from(e.dataTransfer.types) : '(no dataTransfer)'
+    });
+  });
   el.addEventListener('dragleave', () => {
+    firstOverLogged = false;
     el.classList.remove('cwcf-panel__folder-row--drop-target');
   });
   el.addEventListener('drop', async (e) => {
     e.preventDefault();
     el.classList.remove('cwcf-panel__folder-row--drop-target');
     const payload = readDragPayload(e.dataTransfer);
+    dndLog('unsorted drop', { payload });
     if (!payload || !payload.itemRef) return;
     if (payload.kind === 'chat') {
       try {
         await S.removeItemFromAllFolders(payload.itemRef);
+        dndLog('unsorted drop completed', { itemRef: payload.itemRef });
       } catch (err) {
         console.error('[CWCF] move-to-unsorted failed', err);
       }
@@ -564,30 +615,57 @@ function attachUnsortedDropTarget(el) {
 }
 
 function attachFolderDropTarget(el, targetFolderId) {
+  let firstOverLogged = false;
+  el.addEventListener('dragenter', (e) => {
+    dndLog('folder-row dragenter', {
+      targetFolderId,
+      types: e.dataTransfer ? Array.from(e.dataTransfer.types) : '(no dataTransfer)'
+    });
+  });
   el.addEventListener('dragover', (e) => {
     const payload = readDragPayloadPreview(e.dataTransfer);
+    if (!firstOverLogged) {
+      firstOverLogged = true;
+      dndLog('folder-row dragover (first event)', {
+        targetFolderId,
+        types: e.dataTransfer ? Array.from(e.dataTransfer.types) : '(no dataTransfer)',
+        previewPayload: payload,
+        willPreventDefault: !!payload
+      });
+    }
     if (!payload) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = payload.kind === 'folder' ? 'move' : 'copy';
+    // dropEffect must be a member of effectAllowed (set in attachItem/
+    // FolderDragSource as 'move'). Anything else and the browser refuses
+    // the drop with dragend dropEffect:'none' and never fires the drop
+    // event. readDragPayloadPreview returns {kind:'unknown'} during
+    // dragover (getData isn't available), so we can't reliably branch
+    // on kind here even if we wanted to. Both chat→folder assignment
+    // and folder→folder reparent are semantic moves; 'move' fits both.
+    e.dataTransfer.dropEffect = 'move';
     el.classList.add('cwcf-panel__folder-row--drop-target');
   });
   el.addEventListener('dragleave', () => {
+    firstOverLogged = false;
     el.classList.remove('cwcf-panel__folder-row--drop-target');
   });
   el.addEventListener('drop', async (e) => {
     e.preventDefault();
     el.classList.remove('cwcf-panel__folder-row--drop-target');
     const payload = readDragPayload(e.dataTransfer);
+    dndLog('folder-row drop', { targetFolderId, payload });
     if (!payload) return;
     try {
       if (payload.kind === 'folder') {
         if (payload.folderId === targetFolderId) return;
         await S.moveToParent(payload.folderId, targetFolderId);
+        dndLog('folder→folder move complete', { from: payload.folderId, to: targetFolderId });
       } else if (payload.kind === 'chat') {
         if (payload.sourceFolderId && payload.sourceFolderId !== targetFolderId) {
           await S.removeItemFromFolder(payload.itemRef, payload.sourceFolderId);
         }
         await S.assignItemToFolder(payload.itemRef, targetFolderId);
+        dndLog('chat→folder assign complete', { itemRef: payload.itemRef, targetFolderId });
       }
     } catch (err) {
       console.error('[CWCF] folder drop failed', err);
@@ -615,23 +693,109 @@ function attachRootDropZone(treeEl) {
     e.preventDefault();
     treeEl.classList.remove('cwcf-panel__tree--drop-root');
     const payload = readDragPayload(e.dataTransfer);
+    dndLog('root drop', { payload });
     if (!payload || payload.kind !== 'folder') return;
     try {
       await S.moveToParent(payload.folderId, null);
+      dndLog('root drop complete', { folderId: payload.folderId });
     } catch (err) {
       console.error('[CWCF] move-to-root failed', err);
     }
   });
 }
 
+// Auto-scroll the tree when a drag hovers near its top or bottom edge.
+// HTML5 native DnD doesn't auto-scroll containers; we drive it via rAF.
+// Also attaches an explicit wheel listener so the user can manually
+// scroll mid-drag — some browsers / page-level handlers swallow wheel
+// events while a drag is active.
+function attachTreeAutoScroll(treeEl) {
+  const EDGE_ZONE_PX = 60;
+  const MAX_SPEED_PX = 14;
+
+  let dragActive = false;
+  let pointerY = 0;
+  let rafId = null;
+
+  treeEl.addEventListener('dragover', (e) => {
+    pointerY = e.clientY;
+    if (!dragActive) {
+      dragActive = true;
+      rafId = requestAnimationFrame(tick);
+    }
+  });
+
+  // Reset when drag finishes anywhere in the document. We listen on
+  // capture so we run even if some other handler stops bubble propagation.
+  document.addEventListener('dragend', stopAutoScroll, true);
+  document.addEventListener('drop', stopAutoScroll, true);
+
+  function tick() {
+    if (!dragActive) return;
+    const rect = treeEl.getBoundingClientRect();
+    if (pointerY < rect.top + EDGE_ZONE_PX) {
+      const intensity = Math.min(1, (rect.top + EDGE_ZONE_PX - pointerY) / EDGE_ZONE_PX);
+      treeEl.scrollBy(0, -MAX_SPEED_PX * intensity);
+    } else if (pointerY > rect.bottom - EDGE_ZONE_PX) {
+      const intensity = Math.min(1, (pointerY - (rect.bottom - EDGE_ZONE_PX)) / EDGE_ZONE_PX);
+      treeEl.scrollBy(0, MAX_SPEED_PX * intensity);
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function stopAutoScroll() {
+    dragActive = false;
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  }
+
+  // Wheel-during-drag handler. Currently dormant on Chromium-based
+  // browsers because Chromium does not dispatch wheel events to
+  // JavaScript while an HTML5 native drag is active. Verified by
+  // diagnostic logs in the v0.2.1 fixup round: this listener is
+  // registered at the highest catchment we can reach (document, capture
+  // phase) and never fires during a drag.
+  //
+  // We keep the registration anyway because:
+  // - Cost is zero. Listener never runs in the off case.
+  // - If a future Chromium release changes wheel-during-drag behavior,
+  //   wheel scroll just starts working with no code change.
+  // - If we later replace HTML5 native drag with a custom implementation
+  //   (mousedown/mousemove/mouseup ghost-render approach), wheel events
+  //   are no longer suppressed and this handler activates.
+  //
+  // The user-facing answer for "scroll while dragging" today is the
+  // edge-zone auto-scroll above: hold the dragged item near the top or
+  // bottom of the panel, the panel scrolls under it. Speed ramps with
+  // proximity to the edge.
+  //
+  // dndLog is gated on DEBUG_DND for tracing if the behavior ever does
+  // start firing.
+  document.addEventListener('wheel', (e) => {
+    if (!dragActive) return;
+    dndLog('wheel during drag', { deltaY: e.deltaY });
+    treeEl.scrollBy(0, e.deltaY);
+  }, { capture: true, passive: true });
+}
+
 function attachFolderDragSource(el, folderId) {
   el.addEventListener('dragstart', (e) => {
     const payload = { kind: 'folder', folderId };
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('application/x-cwcf-item', JSON.stringify(payload));
+    dndLog('folder dragstart', { folderId, dataTransferAvailable: !!e.dataTransfer });
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setData('application/x-cwcf-item', JSON.stringify(payload));
+      } catch (err) {
+        dndLog('folder dragstart setData threw', { err: err.message || String(err) });
+      }
+    }
     el.classList.add('cwcf-panel__folder-row--dragging');
   });
   el.addEventListener('dragend', () => {
+    dndLog('folder dragend', { folderId });
     el.classList.remove('cwcf-panel__folder-row--dragging');
   });
 }
@@ -639,11 +803,26 @@ function attachFolderDragSource(el, folderId) {
 function attachItemDragSource(el, itemRef, sourceFolderId) {
   el.addEventListener('dragstart', (e) => {
     const payload = { kind: 'chat', itemRef, sourceFolderId: sourceFolderId || null };
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('application/x-cwcf-item', JSON.stringify(payload));
+    dndLog('item dragstart', {
+      itemRef,
+      sourceFolderId: sourceFolderId || null,
+      dataTransferAvailable: !!e.dataTransfer,
+      defaultPrevented: e.defaultPrevented,
+      targetTag: e.target?.tagName,
+      targetClass: typeof e.target?.className === 'string' ? e.target.className : '(non-string)'
+    });
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setData('application/x-cwcf-item', JSON.stringify(payload));
+      } catch (err) {
+        dndLog('item dragstart setData threw', { err: err.message || String(err) });
+      }
+    }
     el.classList.add('cwcf-panel__item-row--dragging');
   });
-  el.addEventListener('dragend', () => {
+  el.addEventListener('dragend', (e) => {
+    dndLog('item dragend', { itemRef, dropEffect: e.dataTransfer?.dropEffect });
     el.classList.remove('cwcf-panel__item-row--dragging');
   });
 }
@@ -785,97 +964,19 @@ function handleCreateFolder() {
   }
 }
 
-let syncInFlight = false;
-let syncStatusEl = null;
-let syncStatusHideTimer = null;
-let syncUnsubscribe = null;
-
-async function handleSyncClick(btn) {
-  if (syncInFlight) return;
-  if (!api || !api.runSync) return;
-  syncInFlight = true;
-  btn.classList.add('cwcf-panel__icon-btn--busy');
-  btn.disabled = true;
-
-  showSyncStatus('Syncing…', 'progress');
-  await ensureSyncSubscription();
-
-  try {
-    const result = await api.runSync();
-    showSyncStatus(`Synced ${result.count} chats`, 'success');
-    scheduleSyncStatusHide(3000);
-  } catch (err) {
-    console.error('[CWCF] sync failed', err);
-    const reason = err && err.message ? err.message : String(err);
-    showSyncStatus(`Sync failed: ${reason}`, 'error');
-    scheduleSyncStatusHide(6000);
-  } finally {
-    syncInFlight = false;
-    btn.classList.remove('cwcf-panel__icon-btn--busy');
-    btn.disabled = false;
-  }
-}
-
-async function ensureSyncSubscription() {
-  if (syncUnsubscribe) return;
-  if (!api || !api.subscribeSync) return;
-  syncUnsubscribe = await api.subscribeSync(handleSyncEvent);
-}
-
-function handleSyncEvent(event) {
-  if (!event) return;
-  switch (event.phase) {
-    case 'starting':
-      showSyncStatus('Opening /recents…', 'progress');
-      break;
-    case 'loading':
-      showSyncStatus('Waiting for chats to render…', 'progress');
-      break;
-    case 'expanding':
-      showSyncStatus(`Loading more… ${event.count} chats found`, 'progress');
-      break;
-    case 'settling':
-      showSyncStatus(`Finalizing… ${event.count} chats found`, 'progress');
-      break;
-    case 'done':
-      showSyncStatus(`Synced ${event.count} chats`, 'success');
-      break;
-    case 'error':
-      showSyncStatus(`Sync failed: ${event.message || 'unknown error'}`, 'error');
-      break;
-  }
-}
-
-function ensureSyncStatusEl() {
-  if (syncStatusEl && document.body.contains(syncStatusEl)) return syncStatusEl;
-  if (!panelEl) return null;
-  syncStatusEl = document.createElement('div');
-  syncStatusEl.className = 'cwcf-panel__sync-status';
-  syncStatusEl.setAttribute('role', 'status');
-  syncStatusEl.setAttribute('aria-live', 'polite');
-  panelEl.appendChild(syncStatusEl);
-  return syncStatusEl;
-}
-
-function showSyncStatus(text, kind) {
-  const el = ensureSyncStatusEl();
-  if (!el) return;
-  if (syncStatusHideTimer) {
-    clearTimeout(syncStatusHideTimer);
-    syncStatusHideTimer = null;
-  }
-  el.textContent = text;
-  el.classList.remove('cwcf-panel__sync-status--success', 'cwcf-panel__sync-status--error', 'cwcf-panel__sync-status--progress');
-  el.classList.add(`cwcf-panel__sync-status--${kind}`);
-  el.classList.add('cwcf-panel__sync-status--visible');
-}
-
-function scheduleSyncStatusHide(ms) {
-  if (syncStatusHideTimer) clearTimeout(syncStatusHideTimer);
-  syncStatusHideTimer = setTimeout(() => {
-    if (syncStatusEl) syncStatusEl.classList.remove('cwcf-panel__sync-status--visible');
-    syncStatusHideTimer = null;
-  }, ms);
+// Same-tab navigation to /recents with the sessionStorage trigger set.
+// The runner in src/content/sync-runner.js detects the trigger on load,
+// auto-clicks Show More until exhausted, and the recents observer
+// (src/content/recents-observer.js) writes cells into chatCache as they
+// render. User stays on /recents after sync completes.
+//
+// SessionStorage instead of URL hash because claude.ai's SPA router
+// strips hashes during route mount before our content script gets a
+// chance to read them.
+function handleSyncClick(e) {
+  if (e) e.preventDefault();
+  try { sessionStorage.setItem('cwcf:autosync', '1'); } catch {}
+  window.location.assign('/recents');
 }
 
 let activeFolderMenu = null;
