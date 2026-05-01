@@ -155,13 +155,18 @@ async function maybeStartRecentsObserver() {
   }
 }
 
-// Sync-runner only fires when /recents is loaded with the
-// #cwcf-autoscroll hash set (the panel sync button drops the user here).
-// Module checks both conditions itself; calling unconditionally on
-// /recents is fine.
+// Sync-runner only fires when /recents is loaded with the autosync trigger
+// set in sessionStorage by the panel sync button. The module re-checks
+// both conditions itself, so calling unconditionally on /recents is safe.
 async function maybeStartSyncRunner() {
   if (window.location.pathname !== '/recents') return;
-  if (window.location.hash !== '#cwcf-autoscroll') return;
+  let trigger = null;
+  try { trigger = sessionStorage.getItem('cwcf:autosync'); } catch {}
+  console.log('[CWCF main] maybeStartSyncRunner', {
+    path: window.location.pathname,
+    sessionStorageTrigger: trigger
+  });
+  if (trigger !== '1') return;
   try {
     if (!state.modules.syncRunner) {
       const url = chrome.runtime.getURL('src/content/sync-runner.js');

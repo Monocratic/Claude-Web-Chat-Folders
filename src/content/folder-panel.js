@@ -819,14 +819,19 @@ function handleCreateFolder() {
   }
 }
 
-// Same-tab navigation to /recents with the autoscroll hash. The runner
-// in src/content/sync-runner.js detects the hash on /recents load,
+// Same-tab navigation to /recents with the sessionStorage trigger set.
+// The runner in src/content/sync-runner.js detects the trigger on load,
 // auto-clicks Show More until exhausted, and the recents observer
 // (src/content/recents-observer.js) writes cells into chatCache as they
 // render. User stays on /recents after sync completes.
+//
+// SessionStorage instead of URL hash because claude.ai's SPA router
+// strips hashes during route mount before our content script gets a
+// chance to read them.
 function handleSyncClick(e) {
   if (e) e.preventDefault();
-  window.location.assign('/recents#cwcf-autoscroll');
+  try { sessionStorage.setItem('cwcf:autosync', '1'); } catch {}
+  window.location.assign('/recents');
 }
 
 let activeFolderMenu = null;

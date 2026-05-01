@@ -1,30 +1,43 @@
-// Runs on /recents when the URL hash is #cwcf-autoscroll. Auto-clicks the
-// "Show more" button to exhaustion so the recents observer (running in
-// parallel) can capture every chat into chatCache. Shows a small overlay
-// reporting progress; dismisses itself when done.
+// Runs on /recents when the autosync trigger is set. The panel sync button
+// writes sessionStorage 'cwcf:autosync' before navigating; we read and
+// clear it here. SessionStorage survives same-tab navigation but is not
+// touched by claude.ai's SPA router (URL hashes proved unreliable — the
+// router strips them on route mount before our content script reads them).
 //
-// Same-tab navigation (per the v0.2.1 design): the user's current tab
-// navigates to /recents, this runner finishes the loop, the user is left
-// on the populated /recents page.
+// Auto-clicks the "Show more" button to exhaustion so the recents
+// observer (running in parallel) captures every chat into chatCache. A
+// small overlay reports progress; dismisses itself when done.
 
 const SHOW_MORE_INTERVAL_MS = 600;
 const SHOW_MORE_MAX_CLICKS = 80;
 const PER_CLICK_TIMEOUT_MS = 6_000;
 const POLL_INTERVAL_MS = 250;
 const SETTLE_DELAY_MS = 1_500;
-const HASH_TRIGGER = '#cwcf-autoscroll';
+const TRIGGER_KEY = 'cwcf:autosync';
+
+const DEBUG = true;
+const log = (...args) => { if (DEBUG) console.log('[CWCF sync-runner]', ...args); };
 
 let started = false;
 
 export async function start() {
+  let trigger = null;
+  try { trigger = sessionStorage.getItem(TRIGGER_KEY); } catch {}
+  log('start() entered', {
+    started,
+    path: window.location.pathname,
+    hash: window.location.hash,
+    sessionStorageTrigger: trigger
+  });
   if (started) return;
   if (window.location.pathname !== '/recents') return;
-  if (window.location.hash !== HASH_TRIGGER) return;
+  if (trigger !== '1') return;
   started = true;
 
-  // Scrub the hash so refresh / back doesn't re-trigger and the URL bar
-  // is clean once the run completes.
-  history.replaceState(null, '', '/recents');
+  // Clear the trigger immediately so a manual /recents refresh doesn't
+  // re-run autosync. The user can click sync in the panel again to retrigger.
+  try { sessionStorage.removeItem(TRIGGER_KEY); } catch {}
+  log('trigger consumed, starting auto-click loop');
 
   const overlay = mountOverlay();
   let finalCount = 0;
